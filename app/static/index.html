@@ -294,11 +294,40 @@
     </form>
   </dialog>
 
+  <!-- Asystent AI -->
+  <button id="ai-fab" class="ai-fab" type="button" aria-label="Asystent AI">✨</button>
+  <section id="ai-panel" class="ai-panel" hidden aria-label="Asystent AI">
+    <header class="ai-head">
+      <strong>✨ Asystent</strong>
+      <div>
+        <button id="ai-new" class="icon-btn" type="button" aria-label="Nowa rozmowa" title="Nowa rozmowa">🗒️</button>
+        <button id="ai-settings" class="icon-btn" type="button" aria-label="Ustawienia" title="Ustawienia">⚙</button>
+        <button id="ai-close" class="icon-btn" type="button" aria-label="Zamknij">✕</button>
+      </div>
+    </header>
+    <div id="ai-messages" class="ai-messages"></div>
+    <div id="ai-welcome" class="ai-welcome">
+      <p>Zapytaj o swoje finanse albo poproś o zapisanie wydatku. Zapisy zawsze potwierdzasz.</p>
+      <button type="button" data-ask="Ile wydano w tym miesiącu i na co najwięcej?">Ile wydano w tym miesiącu?</button>
+      <button type="button" data-ask="Na czym mogę zaoszczędzić? Przeanalizuj moje wydatki z ostatnich 3 miesięcy.">Na czym mogę zaoszczędzić?</button>
+      <button type="button" data-ask="Czy starczy mi pieniędzy do końca miesiąca?">Czy starczy do końca miesiąca?</button>
+      <button type="button" data-ask="photo">📷 Zeskanuj paragon</button>
+    </div>
+    <div id="ai-typing" class="ai-typing" hidden>Asystent myśli…</div>
+    <form id="ai-form" class="ai-form" autocomplete="off">
+      <button id="ai-photo-btn" type="button" class="icon-btn" aria-label="Zdjęcie paragonu">📷</button>
+      <input id="ai-photo" type="file" accept="image/*" capture="environment" hidden>
+      <input id="ai-input" placeholder="np. 120 zł za prąd, ile wydano na paliwo?" maxlength="2000">
+      <button id="ai-send" class="btn btn-small" type="submit">Wyślij</button>
+    </form>
+  </section>
+
   <div id="tooltip" class="tooltip" hidden></div>
   <div id="toast" class="toast" hidden></div>
 
   <script src="config.js"></script>
   <script src="store.js"></script>
   <script src="app.js"></script>
+  <script src="assistant.js"></script>
 </body>
 </html>

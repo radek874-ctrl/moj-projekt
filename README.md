@@ -116,6 +116,37 @@ Wszystkie przyjmują `date_from` i `date_to`. Oprócz `balance` przyjmują też
 | `GET` | `/budgets/status?month=2026-10` | Wydano / zostało / % / czy przekroczono |
 | `DELETE` | `/budgets/{kategoria}` | Usuń limit |
 
+## Inteligencja
+
+### Podpowiedzi bez AI (`/analytics/insights`, `/analytics/suggest-category`)
+
+Liczone lokalnie, za darmo i bez internetu (`app/insights.py`, to samo w `store.js`):
+
+- **prognoza na koniec miesiąca**: przychody i wydatki do tej pory, niezapłacone stałe
+  pozycje i dalsze wydatki zmienne według średniej z 3 poprzednich miesięcy;
+- **limity**: przekroczony albo „przy tym tempie skończy się ok. 24. dnia”;
+- **skoki w kategoriach**: o ≥30% i ≥50 zł więcej niż średnia z 3 miesięcy;
+- **nietypowo duże wydatki**: ponad 3× mediana kategorii z ostatnich 180 dni;
+- **nadchodzące koszty** z kalendarza (30 dni) i **ocena oszczędzania** w zeszłym miesiącu.
+
+`GET /analytics/suggest-category?text=Orlen&kind=expense` → `{"category": "paliwo", "source": "keywords"}`.
+Najpierw sprawdza Twoje wcześniejsze wpisy (`history`), potem słownik (`keywords`).
+
+### Asystent AI (Claude)
+
+Przycisk ✨ w aplikacji otwiera czat (`app/static/assistant.js`). Asystent:
+- odpowiada na pytania o finanse na podstawie danych z aplikacji (korzysta z narzędzi
+  wywołujących to samo API: bilans, kategorie, wpisy, podpowiedzi, opłaty, kalendarz, limity);
+- zapisuje wydatki i przychody, opłaca stałe rachunki i dodaje terminy, zawsze po potwierdzeniu
+  w oknie dialogowym;
+- czyta zdjęcia paragonów (📷) i zapisuje je jako wydatek.
+
+Wymaga własnego klucza API Anthropic (⚙ w oknie asystenta). Klucz jest zapisany tylko
+w przeglądarce. Pytania i potrzebne dane budżetu trafiają do Anthropic. Domyślny model to
+Claude Opus 5.5 (do wyboru tańsze Sonnet 5.5 i Haiku 5.5), koszt każdej odpowiedzi widać pod nią.
+Dla Opus i Sonnet włączony jest serwerowy fallback (`fallbacks: "default"`). Oficjalne SDK
+`@anthropic-ai/sdk` 0.129.0 jest dołączone w `app/static/vendor/` (licencja MIT).
+
 ## Aplikacja (PWA)
 
 Zakładki: **Pulpit** (bilans, przypomnienie o niezapłaconych rachunkach,
@@ -167,6 +198,7 @@ bazy są automatycznie uzupełniane o nowe tabele przy starcie.
 app/
   main.py              # aplikacja FastAPI, opis API
   db.py                # SQLite: schemat, migracja, konwersja groszy
+  insights.py          # podpowiedzi i prognoza bez AI, podpowiadanie kategorii
   schemas.py           # modele danych (wejście/wyjście)
   filters.py           # filtry zapytań (daty, kategoria)
   routers/
@@ -177,6 +209,8 @@ app/
     budgets.py         # /budgets – limity wydatków
   static/              # aplikacja (HTML/CSS/JS, manifest, service worker)
     store.js           # API w przeglądarce (tryb bez serwera)
+    assistant.js       # asystent AI (Claude) z narzędziami
+    vendor/            # dołączone SDK Anthropic
 start.sh / stop.sh     # serwer w Termuxie
 install-termux.sh      # instalacja w Termuxie
 tests/test_api.py
