@@ -1,13 +1,18 @@
-// Service worker: przechowuje interfejs w pamięci podręcznej, żeby aplikacja
-// otwierała się z ikony nawet przy wyłączonym serwerze (dane wymagają serwera).
-const CACHE = "wydatki-v1";
+// Service worker: trzyma pliki aplikacji w pamięci podręcznej, żeby działała
+// z ikony także bez internetu. Zapytania do API (tryb serwera) idą zawsze do sieci.
+const CACHE = "wydatki-v2";
 const SHELL = [
-  "/",
-  "/static/style.css",
-  "/static/app.js",
-  "/static/manifest.webmanifest",
-  "/static/icons/icon-192.png",
+  "./",
+  "index.html",
+  "style.css",
+  "config.js",
+  "store.js",
+  "app.js",
+  "manifest.webmanifest",
+  "icons/icon-192.png",
+  "icons/icon-512.png",
 ];
+const SHELL_URLS = new Set(SHELL.map((p) => new URL(p, self.registration.scope).href));
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
@@ -25,18 +30,19 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (event.request.method !== "GET" || url.origin !== location.origin) return;
-  const isShell = url.pathname === "/" || url.pathname.startsWith("/static/");
-  if (!isShell) return; // zapytania do API zawsze idą do serwera
+  url.search = "";
+  if (event.request.method !== "GET" || !SHELL_URLS.has(url.href)) return;
 
-  // Najpierw sieć (świeża wersja), w razie braku serwera - kopia z cache.
+  // Najpierw sieć (świeża wersja), bez sieci - kopia z cache.
   event.respondWith(
     fetch(event.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(event.request, copy));
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(event.request, copy));
+        }
         return res;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() => caches.match(event.request, { ignoreSearch: true }))
   );
 });

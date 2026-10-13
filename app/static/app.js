@@ -25,7 +25,10 @@ function toast(msg) {
   toast.t = setTimeout(() => (el.hidden = true), 2500);
 }
 
+const LOCAL = window.APP_MODE === "local";
+
 async function api(path, options = {}) {
+  if (LOCAL) return LocalApi.request(path, options);
   let res;
   try {
     res = await fetch(path, options);
@@ -324,6 +327,52 @@ $("#budget-form").addEventListener("submit", async (ev) => {
   loaders.budzety();
 });
 
+// ---------- kopia zapasowa ----------
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const csvField = (v) => (/[;"\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+
+$("#export-csv").addEventListener("click", async () => {
+  const all = [];
+  for (let offset = 0; ; offset += 1000) {
+    const page = await api("/expenses" + qs({ limit: 1000, offset }));
+    all.push(...page);
+    if (page.length < 1000) break;
+  }
+  const lines = ["date;amount;category;description"].concat(
+    all.reverse().map((e) => [e.date, e.amount.toFixed(2), e.category, e.description].map(csvField).join(";"))
+  );
+  download(`wydatki-${iso(new Date())}.csv`, "\uFEFF" + lines.join("\n") + "\n", "text/csv");
+  toast(`Wyeksportowano ${all.length} wydatków`);
+});
+
+if (LOCAL) {
+  document.querySelectorAll(".local-only").forEach((el) => (el.hidden = false));
+  $("#backup-save").addEventListener("click", () =>
+    download(`wydatki-kopia-${iso(new Date())}.json`, LocalApi.exportJson(), "application/json")
+  );
+  $("#backup-load").addEventListener("change", async (ev) => {
+    const file = ev.target.files[0];
+    ev.target.value = "";
+    if (!file || !confirm("Przywrócenie kopii zastąpi wszystkie obecne dane. Kontynuować?")) return;
+    try {
+      LocalApi.importJson(await file.text());
+      toast("Przywrócono kopię");
+    } catch (e) {
+      toast("Błąd: " + e.message);
+    }
+  });
+  // Poproś przeglądarkę, żeby nie usuwała danych przy braku miejsca.
+  navigator.storage?.persist?.();
+}
+
 // ---------- instalacja (PWA) ----------
 let installEvent = null;
 window.addEventListener("beforeinstallprompt", (e) => {
@@ -340,7 +389,7 @@ $("#install-btn").addEventListener("click", async () => {
 });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
 // start

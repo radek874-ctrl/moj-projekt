@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from app.db import init_db
@@ -35,16 +35,14 @@ def health():
 
 
 # --- Interfejs aplikacji (PWA) ---
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+@app.get("/config.js", include_in_schema=False)
+def frontend_config():
+    # Ta sama aplikacja działa też bez serwera (GitHub Pages, dane w przeglądarce);
+    # serwowana stąd ma korzystać z API.
+    return Response('window.APP_MODE = "server";\n', media_type="application/javascript",
+                    headers={"Cache-Control": "no-cache"})
 
 
-@app.get("/", include_in_schema=False)
-def index():
-    return FileResponse(STATIC_DIR / "index.html")
-
-
-@app.get("/sw.js", include_in_schema=False)
-def service_worker():
-    # Service worker musi być serwowany z katalogu głównego, żeby obejmował całą aplikację.
-    return FileResponse(STATIC_DIR / "sw.js", media_type="application/javascript",
-                        headers={"Cache-Control": "no-cache"})
+# Pliki aplikacji serwowane z katalogu głównego (index.html pod "/").
+# Montowane na końcu, żeby nie przesłaniały tras API.
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

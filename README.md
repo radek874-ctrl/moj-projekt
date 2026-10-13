@@ -14,7 +14,23 @@ Dokumentacja interaktywna: http://localhost:8000/docs
 
 Plik bazy danych ustawia zmienna `EXPENSES_DB` (domyślnie `expenses.db`).
 
-## Aplikacja na telefon (Android + Termux)
+## Aplikacja bez serwera (GitHub Pages)
+
+Aplikacja jest publikowana pod adresem
+**https://radek874-ctrl.github.io/moj-projekt/** (workflow
+`.github/workflows/pages.yml`, przy każdej zmianie w `app/static`).
+
+W tej wersji nie ma serwera: `app/static/store.js` odtwarza API w przeglądarce,
+a dane są zapisywane w pamięci przeglądarki na telefonie (localStorage). Działa bez
+internetu po pierwszym otwarciu. W zakładce *Dodaj → Kopia zapasowa* można
+eksportować CSV oraz zapisywać i przywracać pełną kopię (JSON).
+
+Tryb wybiera `config.js`: plik statyczny ustawia `"local"`, a serwer FastAPI
+podmienia go na `"server"`. Ten sam interfejs działa więc w obu trybach.
+
+Jednorazowo trzeba włączyć Pages: *Settings → Pages → Source: GitHub Actions*.
+
+## Aplikacja na telefon z serwerem (Android + Termux)
 
 Pod adresem `/` działa aplikacja mobilna (PWA): analiza z wykresami,
 dodawanie wydatków, lista i budżety. Można ją zainstalować jak zwykłą aplikację.
@@ -115,6 +131,7 @@ app/
     analytics.py     # statystyki
     budgets.py       # budżety
   static/            # aplikacja mobilna (HTML/CSS/JS, manifest, service worker)
+    store.js         # API w przeglądarce (tryb bez serwera)
 start.sh / stop.sh   # uruchamianie serwera w Termuxie
 install-termux.sh    # jednorazowa instalacja w Termuxie
 tests/test_api.py

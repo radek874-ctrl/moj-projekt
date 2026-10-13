@@ -151,8 +151,12 @@ def test_import_csv_missing_columns(client):
 def test_frontend(client):
     r = client.get("/")
     assert r.status_code == 200 and "Moje Wydatki" in r.text
-    assert client.get("/sw.js").headers["content-type"].startswith("application/javascript")
-    manifest = client.get("/static/manifest.webmanifest")
+    assert 'APP_MODE = "server"' in client.get("/config.js").text
+    assert client.get("/sw.js").headers["content-type"].startswith("text/javascript") or \
+        client.get("/sw.js").headers["content-type"].startswith("application/javascript")
+    manifest = client.get("/manifest.webmanifest")
     assert manifest.status_code == 200
     for icon in manifest.json()["icons"]:
-        assert client.get(icon["src"]).status_code == 200
+        assert client.get("/" + icon["src"]).status_code == 200
+    # API nie jest przesłonięte przez pliki statyczne
+    assert client.get("/health").json() == {"status": "ok"}
