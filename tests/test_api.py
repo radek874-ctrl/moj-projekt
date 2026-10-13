@@ -146,3 +146,13 @@ def test_import_csv(client):
 def test_import_csv_missing_columns(client):
     r = client.post("/expenses/import", files={"file": ("w.csv", b"foo,bar\n1,2\n", "text/csv")})
     assert r.status_code == 400
+
+
+def test_frontend(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "Moje Wydatki" in r.text
+    assert client.get("/sw.js").headers["content-type"].startswith("application/javascript")
+    manifest = client.get("/static/manifest.webmanifest")
+    assert manifest.status_code == 200
+    for icon in manifest.json()["icons"]:
+        assert client.get(icon["src"]).status_code == 200

@@ -14,6 +14,33 @@ Dokumentacja interaktywna: http://localhost:8000/docs
 
 Plik bazy danych ustawia zmienna `EXPENSES_DB` (domyślnie `expenses.db`).
 
+## Aplikacja na telefon (Android + Termux)
+
+Pod adresem `/` działa aplikacja mobilna (PWA): analiza z wykresami,
+dodawanie wydatków, lista i budżety. Można ją zainstalować jak zwykłą aplikację.
+
+**Instalacja (jednorazowo)** w Termuxie:
+
+```bash
+git clone https://github.com/radek874-ctrl/moj-projekt.git
+cd moj-projekt
+./install-termux.sh
+```
+
+**Uruchamianie:** `./start.sh` uruchamia serwer w tle i otwiera aplikację
+w przeglądarce. `./stop.sh` zatrzymuje serwer.
+
+**Ikona na ekranie głównym:** w Chrome otwórz `http://127.0.0.1:8000/`,
+stuknij „Zainstaluj” w nagłówku (albo menu ⋮ → „Zainstaluj aplikację” /
+„Dodaj do ekranu głównego”).
+
+**Start jednym dotknięciem:** zainstaluj aplikację *Termux:Widget* (F-Droid)
+i dodaj jej widżet na ekran główny. Skrypt instalacyjny tworzy w nim skróty
+„Wydatki” (start) i „Wydatki stop”.
+
+Serwer nasłuchuje tylko na `127.0.0.1`, więc dane są dostępne wyłącznie
+z telefonu.
+
 ## Testy
 
 ```bash
@@ -87,6 +114,9 @@ app/
     expenses.py      # CRUD + import CSV
     analytics.py     # statystyki
     budgets.py       # budżety
+  static/            # aplikacja mobilna (HTML/CSS/JS, manifest, service worker)
+start.sh / stop.sh   # uruchamianie serwera w Termuxie
+install-termux.sh    # jednorazowa instalacja w Termuxie
 tests/test_api.py
 ```
 

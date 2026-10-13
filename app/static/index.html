@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1c5cab">
+  <title>Moje Wydatki</title>
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="icon" href="/static/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Moje Wydatki</h1>
+    <button id="install-btn" class="btn btn-small" hidden>Zainstaluj</button>
+  </header>
+
+  <div id="offline" class="banner" hidden>
+    Brak połączenia z serwerem. Uruchom go w Termuxie (<code>./start.sh</code>) i odśwież.
+  </div>
+
+  <main>
+    <!-- ANALIZA -->
+    <section id="view-analiza" class="view">
+      <div class="periods" role="tablist" aria-label="Okres">
+        <button data-period="month" class="chip active">Ten miesiąc</button>
+        <button data-period="prev">Poprzedni</button>
+        <button data-period="3m">3 miesiące</button>
+        <button data-period="year">Ten rok</button>
+        <button data-period="all">Wszystko</button>
+      </div>
+
+      <div class="tiles">
+        <div class="tile tile-hero">
+          <span class="tile-label">Wydano</span>
+          <span class="tile-value" id="sum-total">–</span>
+        </div>
+        <div class="tile">
+          <span class="tile-label">Średnio dziennie</span>
+          <span class="tile-value" id="sum-daily">–</span>
+        </div>
+        <div class="tile">
+          <span class="tile-label">Liczba wydatków</span>
+          <span class="tile-value" id="sum-count">–</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Według kategorii</h2>
+        <div id="chart-categories" class="hbars"></div>
+      </div>
+
+      <div class="card">
+        <h2>Miesiące</h2>
+        <div id="chart-monthly" class="cols"></div>
+      </div>
+
+      <div class="card">
+        <h2>Największe wydatki</h2>
+        <ul id="top-list" class="list"></ul>
+      </div>
+    </section>
+
+    <!-- DODAJ -->
+    <section id="view-dodaj" class="view" hidden>
+      <form id="expense-form" class="card form">
+        <h2>Nowy wydatek</h2>
+        <label>Kwota (zł)
+          <input name="amount" type="text" inputmode="decimal" placeholder="0,00" required autocomplete="off">
+        </label>
+        <label>Kategoria
+          <input name="category" list="categories" placeholder="np. jedzenie" required autocomplete="off">
+          <datalist id="categories"></datalist>
+        </label>
+        <div id="category-chips" class="chips"></div>
+        <label>Opis
+          <input name="description" placeholder="opcjonalnie" maxlength="255" autocomplete="off">
+        </label>
+        <label>Data
+          <input name="date" type="date" required>
+        </label>
+        <button class="btn" type="submit">Zapisz</button>
+      </form>
+
+      <form id="import-form" class="card form">
+        <h2>Import z CSV</h2>
+        <p class="muted">Kolumny: <code>date;amount;category;description</code></p>
+        <input name="file" type="file" accept=".csv,text/csv" required>
+        <button class="btn btn-secondary" type="submit">Importuj</button>
+        <div id="import-result" class="muted"></div>
+      </form>
+    </section>
+
+    <!-- LISTA -->
+    <section id="view-lista" class="view" hidden>
+      <div class="card">
+        <h2>Wydatki</h2>
+        <ul id="expense-list" class="list"></ul>
+        <button id="load-more" class="btn btn-secondary" hidden>Pokaż więcej</button>
+      </div>
+    </section>
+
+    <!-- BUDŻETY -->
+    <section id="view-budzety" class="view" hidden>
+      <div class="card">
+        <h2>Budżety – <span id="budget-month"></span></h2>
+        <div id="budget-list"></div>
+      </div>
+      <form id="budget-form" class="card form">
+        <h2>Ustaw limit miesięczny</h2>
+        <label>Kategoria
+          <input name="category" list="categories" required autocomplete="off">
+        </label>
+        <label>Limit (zł)
+          <input name="limit" type="text" inputmode="decimal" required autocomplete="off">
+        </label>
+        <button class="btn" type="submit">Zapisz limit</button>
+      </form>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-view="analiza" class="active"><span class="ico">📊</span>Analiza</button>
+    <button data-view="dodaj"><span class="ico">➕</span>Dodaj</button>
+    <button data-view="lista"><span class="ico">📋</span>Lista</button>
+    <button data-view="budzety"><span class="ico">🎯</span>Budżety</button>
+  </nav>
+
+  <div id="tooltip" class="tooltip" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
