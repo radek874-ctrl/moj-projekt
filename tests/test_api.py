@@ -350,3 +350,89 @@ def test_event_calendar_and_update(client):
     assert client.patch(f"/events/{ev['id']}", json={"category": ""}).json()["category"] is None
     assert client.delete(f"/events/{ev['id']}").status_code == 204
     assert client.get("/events/calendar", params={"month": "2026-13"}).status_code == 422
+
+
+# ---------- podpowiedzi (bez AI) ----------
+
+import calendar  # noqa: E402
+
+from app.insights import zl  # noqa: E402
+
+
+def _month_day(offset_months: int, day: int) -> str:
+    t = date.today()
+    y, m = divmod(t.month - 1 + offset_months, 12)
+    y, m = t.year + y, m + 1
+    return date(y, m, min(day, calendar.monthrange(y, m)[1])).isoformat()
+
+
+def test_insights_empty(client):
+    r = client.get("/analytics/insights").json()
+    assert [i["key"] for i in r["insights"]] == ["start"]
+    assert r["forecast"]["projected_balance"] == 0
+
+
+def test_insights_forecast_and_warnings(client):
+    today = date.today()
+    # historia: 3 poprzednie miesiące po 300 zł na jedzenie (5 zakupów po 60 zł)
+    for k in (1, 2, 3):
+        for d in (3, 8, 13, 18, 23):
+            add(client, 60, "jedzenie", _month_day(-k, d), "Biedronka")
+    # zeszły miesiąc: przychód 1000, wydatki 300 (jedzenie) + 650
+    add_income(client, 1000, "wynagrodzenie", _month_day(-1, 10))
+    add(client, 650, "inne", _month_day(-1, 11))
+    # ten miesiąc: duży zakup jedzenia (skok + nietypowy wydatek), limit przekroczony
+    add(client, 500, "jedzenie", today.replace(day=1).isoformat(), "Wielkie zakupy")
+    client.put("/budgets/jedzenie", json={"monthly_limit": 400})
+    client.post("/recurring", json={"name": "Prąd", "category": "prąd", "amount": 200, "day": 28})
+    client.post("/recurring", json={"kind": "income", "name": "Pensja", "category": "wynagrodzenie",
+                                    "amount": 3000, "day": 28})
+
+    r = client.get("/analytics/insights").json()
+    f = r["forecast"]
+    dim = calendar.monthrange(today.year, today.month)[1]
+    prev_days = sum(calendar.monthrange(*map(int, _month_day(-k, 1).split("-")[:2]))[1] for k in (1, 2, 3))
+    variable_prev = 3 * 30000 + 65000  # jedzenie z 3 mies. + "inne"
+    expected_variable = int(variable_prev / prev_days * (dim - today.day) + 0.5)
+    assert f["planned_expenses"] == 200 and f["planned_income"] == 3000
+    assert f["projected_variable"] == expected_variable / 100
+    assert f["projected_expenses"] == (50000 + 20000 + expected_variable) / 100
+    assert f["projected_balance"] == (300000 - 70000 - expected_variable) / 100
+
+    keys = {i["key"]: i for i in r["insights"]}
+    assert keys["forecast"]["level"] == "good"
+    assert keys["budget:jedzenie"]["level"] == "alert"
+    assert "o 100\u00a0zł za dużo" in keys["budget:jedzenie"]["text"]
+    assert keys["spike:jedzenie"]["text"].startswith("W tym miesiącu 500 zł – o 67% więcej")
+    assert keys[next(k for k in keys if k.startswith("unusual:"))]["text"].startswith("Wielkie zakupy: 500")
+    assert keys["savings"]["level"] == "warning" and "5% przychodów" in keys["savings"]["text"]
+
+
+def test_insights_upcoming_events(client):
+    add(client, 10, "inne", date.today().isoformat())
+    client.post("/events", json={"title": "OC", "date": (date.today() + timedelta(days=10)).isoformat(),
+                                 "amount": 1200})
+    up = next(i for i in client.get("/analytics/insights").json()["insights"] if i["key"] == "upcoming")
+    assert "OC 1 200 zł (za 10 dni)" in up["text"]
+
+
+def test_zl_format():
+    assert zl(123456) == "1 235 zł"
+    assert zl(-5000) == "−50 zł"
+    assert zl(0) == "0 zł"
+
+
+def test_suggest_category(client):
+    s = lambda text, kind="expense": client.get(  # noqa: E731
+        "/analytics/suggest-category", params={"text": text, "kind": kind}).json()
+    assert s("ORLEN Warszawa") == {"category": "paliwo", "source": "keywords"}
+    assert s("Rachunek Tauron") == {"category": "prąd", "source": "keywords"}
+    assert s("wypłata październik", "income") == {"category": "wynagrodzenie", "source": "keywords"}
+    assert s("coś zupełnie innego") == {"category": None, "source": None}
+    # historia użytkownika ma pierwszeństwo przed słownikiem
+    add(client, 30, "rozrywka", "2026-10-01", "Orlen hot-dog")
+    add(client, 30, "rozrywka", "2026-10-02", "Orlen hot-dog")
+    assert s("orlen hot-dog") == {"category": "rozrywka", "source": "history"}
+    assert s("Kebab u Aliego") == {"category": None, "source": None}
+    add(client, 25, "jedzenie", "2026-10-03", "Kebab u Aliego")
+    assert s("kebab na mieście") == {"category": "jedzenie", "source": "history"}

@@ -306,6 +306,245 @@ const LocalApi = (() => {
     };
   }
 
+  // ---------- podpowiedzi bez AI (jak app/insights.py – zmieniaj oba miejsca) ----------
+  const NBSP = " ";
+  const halfUp = (x) => Math.floor(x + 0.5);
+
+  function zl(cents) {
+    const value = halfUp(cents / 100);
+    const sign = value < 0 ? "−" : "";
+    let digits = String(Math.abs(value));
+    const groups = [];
+    while (digits) {
+      groups.unshift(digits.slice(-3));
+      digits = digits.slice(0, -3);
+    }
+    return `${sign}${groups.join(NBSP) || "0"}${NBSP}zł`;
+  }
+
+  const shiftYM = (y, m, delta) => {
+    const total = m - 1 + delta;
+    return [y + Math.floor(total / 12), ((total % 12) + 12) % 12 + 1];
+  };
+  const monthBounds = (y, m) => {
+    const days = daysInMonth(y, m);
+    return [`${y}-${pad2(m)}-01`, `${y}-${pad2(m)}-${pad2(days)}`, days];
+  };
+  const sumCents = (rows) => rows.reduce((s, r) => s + r.amount_cents, 0);
+  function median(values) {
+    const s = [...values].sort((a, b) => a - b);
+    const n = s.length;
+    return n % 2 ? s[(n - 1) / 2] : halfUp((s[n / 2 - 1] + s[n / 2]) / 2);
+  }
+
+  function computeInsights() {
+    const today = todayIso();
+    const [y, m, day] = today.split("-").map(Number);
+    const month = today.slice(0, 7);
+    const dim = daysInMonth(y, m);
+    const inMonth = (rows) => rows.filter((r) => r.date.startsWith(month));
+    const curExp = inMonth(db.expenses), curInc = inMonth(db.incomes);
+
+    const [py, pm] = shiftYM(y, m, -3);
+    const prevStart = monthBounds(py, pm)[0];
+    const [ly, lm] = shiftYM(y, m, -1);
+    const prevEnd = monthBounds(ly, lm)[1];
+    const prevDays = [1, 2, 3].reduce((s, k) => s + monthBounds(...shiftYM(y, m, -k))[2], 0);
+    const prevExp = db.expenses.filter((r) => prevStart <= r.date && r.date <= prevEnd);
+
+    // --- prognoza końca miesiąca ---
+    const paid = new Set([...curExp, ...curInc].filter((r) => r.recurring_id != null).map((r) => r.recurring_id));
+    const plannedExp = sumCents(db.recurring.filter((r) => r.kind === "expense" && !paid.has(r.id)));
+    const plannedInc = sumCents(db.recurring.filter((r) => r.kind === "income" && !paid.has(r.id)));
+    const variablePrev = sumCents(prevExp.filter((r) => r.recurring_id == null));
+    const variableNow = sumCents(curExp.filter((r) => r.recurring_id == null));
+    const daily = variablePrev ? variablePrev / prevDays : variableNow / day;
+    const projectedVariable = halfUp(daily * (dim - day));
+    const incomeSoFar = sumCents(curInc), expensesSoFar = sumCents(curExp);
+    const projectedIncome = incomeSoFar + plannedInc;
+    const projectedExpenses = expensesSoFar + plannedExp + projectedVariable;
+    const forecast = {
+      month,
+      income_so_far: incomeSoFar / 100,
+      expenses_so_far: expensesSoFar / 100,
+      planned_income: plannedInc / 100,
+      planned_expenses: plannedExp / 100,
+      projected_variable: projectedVariable / 100,
+      projected_income: projectedIncome / 100,
+      projected_expenses: projectedExpenses / 100,
+      projected_balance: (projectedIncome - projectedExpenses) / 100,
+    };
+
+    const insights = [];
+    const add = (key, level, title, text) => insights.push({ key, level, title, text });
+
+    if (!db.expenses.length && !db.incomes.length) {
+      add("start", "info", "Zacznij od kilku wpisów",
+        "Dodaj wydatki i przychody, a tutaj pojawią się prognozy i podpowiedzi.");
+      return { forecast, insights };
+    }
+
+    // a) prognoza bilansu
+    if (projectedIncome > 0) {
+      const balance = projectedIncome - projectedExpenses;
+      if (balance < 0) {
+        add("forecast", "alert", "Może zabraknąć pieniędzy",
+          `Prognoza na koniec miesiąca: brakuje ok. ${zl(-balance)}. ` +
+          `Uwzględniono stałe opłaty (${zl(plannedExp)}) i zwykłe tempo wydatków.`);
+      } else {
+        add("forecast", "good", "Prognoza na koniec miesiąca",
+          `Powinno zostać ok. ${zl(balance)} (przychody ${zl(projectedIncome)}, ` +
+          `wydatki ok. ${zl(projectedExpenses)}).`);
+      }
+    }
+
+    // b) limity
+    for (const cat of Object.keys(db.budgets).sort()) {
+      const limit = db.budgets[cat];
+      const spent = sumCents(curExp.filter((r) => r.category === cat));
+      if (spent > limit) {
+        add(`budget:${cat}`, "alert", `Limit „${cat}” przekroczony`,
+          `Wydano ${zl(spent)} z ${zl(limit)} – o ${zl(spent - limit)} za dużo.`);
+      } else if (day >= 5 && spent > 0) {
+        const exceedDay = Math.floor((limit * day) / spent) + 1;
+        if (exceedDay <= dim) {
+          add(`budget:${cat}`, "warning", `Limit „${cat}” może się skończyć`,
+            `Przy obecnym tempie limit ${zl(limit)} skończy się ok. ${exceedDay}. dnia miesiąca ` +
+            `(wydano już ${zl(spent)}).`);
+        }
+      }
+    }
+
+    // c) skoki w kategoriach
+    const spikes = [];
+    for (const cat of [...new Set(curExp.map((r) => r.category))].sort()) {
+      const cur = sumCents(curExp.filter((r) => r.category === cat));
+      const prevTotal = sumCents(prevExp.filter((r) => r.category === cat));
+      if (!prevTotal) continue;
+      const avg = halfUp(prevTotal / 3);
+      if (avg > 0 && cur * 10 > avg * 13 && cur - avg >= 5000) spikes.push([cur - avg, cat, cur, avg]);
+    }
+    spikes.sort((a, b) => b[0] - a[0] || cmp(a[1], b[1]));
+    for (const [, cat, cur, avg] of spikes.slice(0, 3)) {
+      const pct = halfUp(((cur - avg) * 100) / avg);
+      add(`spike:${cat}`, "warning", `Więcej niż zwykle: ${cat}`,
+        `W tym miesiącu ${zl(cur)} – o ${pct}% więcej niż średnio (${zl(avg)} miesięcznie).`);
+    }
+
+    // d) nietypowo duże pojedyncze wydatki
+    const histStartDate = new Date(Date.UTC(y, m - 1, day) - 180 * 86400000);
+    const histStart = histStartDate.toISOString().slice(0, 10);
+    const unusual = [];
+    for (const r of curExp) {
+      const history = db.expenses
+        .filter((h) => h.category === r.category && histStart <= h.date && h.date < `${month}-01`)
+        .map((h) => h.amount_cents);
+      if (history.length >= 5) {
+        const med = median(history);
+        if (med > 0 && r.amount_cents > 3 * med) unusual.push([r.amount_cents / med, r.id, r, med]);
+      }
+    }
+    unusual.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+    for (const [, , r, med] of unusual.slice(0, 2)) {
+      add(`unusual:${r.id}`, "info", "Nietypowo duży wydatek",
+        `${r.description || r.category}: ${zl(r.amount_cents)} – zwykle ok. ${zl(med)} w kategorii „${r.category}”.`);
+    }
+
+    // e) nadchodzące większe koszty z kalendarza
+    const upcoming = db.events.map(toEvent)
+      .filter((e) => e.amount && e.state !== "done" && e.days_left != null && e.days_left >= 0 && e.days_left <= 30)
+      .sort((a, b) => a.days_left - b.days_left || cmp(a.title, b.title));
+    if (upcoming.length) {
+      const total = upcoming.reduce((s, e) => s + Math.round(e.amount * 100), 0);
+      const parts = upcoming.slice(0, 3)
+        .map((e) => `${e.title} ${zl(Math.round(e.amount * 100))} (za ${e.days_left} dni)`).join(", ");
+      add("upcoming", "info", "Nadchodzące koszty z kalendarza",
+        `W ciągu 30 dni: ${parts}. Razem ${zl(total)} – warto to odłożyć.`);
+    }
+
+    // f) oszczędzanie w poprzednim miesiącu
+    const lastMonth = `${ly}-${pad2(lm)}`;
+    const lastInc = sumCents(db.incomes.filter((r) => r.date.startsWith(lastMonth)));
+    const lastExp = sumCents(db.expenses.filter((r) => r.date.startsWith(lastMonth)));
+    if (lastInc > 0) {
+      const rate = halfUp(((lastInc - lastExp) * 100) / lastInc);
+      if (rate < 10) {
+        add("savings", "warning", "Mało oszczędności",
+          `W zeszłym miesiącu zostało ${rate}% przychodów. Dobra zasada: odkładaj co najmniej 10%.`);
+      } else if (rate >= 20) {
+        add("savings", "good", "Świetnie oszczędzasz", `W zeszłym miesiącu zostało Ci ${rate}% przychodów.`);
+      }
+    }
+    return { forecast, insights };
+  }
+
+  // ---------- podpowiadanie kategorii (jak app/insights.py) ----------
+  const KEYWORDS = {
+    expense: [
+      [["biedronka", "lidl", "żabka", "zabka", "kaufland", "carrefour", "auchan", "netto", "dino",
+        "lewiatan", "stokrotka", "piekarnia", "spożywcz", "zakupy", "obiad", "pizza"], "jedzenie"],
+      [["orlen", "bp ", "shell", "circle k", "lotos", "moya", "paliwo", "benzyn", "diesel", "tankow"], "paliwo"],
+      [["tauron", "enea", "energa", "pge", "innogy", "e.on", "prąd", "prad"], "prąd"],
+      [["pgnig", "gazownict", "gaz"], "gaz"],
+      [["wodociąg", "wodociag", "mpwik", "woda", "ścieki"], "woda"],
+      [["ogrzewan", "ciepło", "cieplo", "węgiel", "opał"], "ogrzewanie"],
+      [["czynsz", "wspólnota", "spółdzielnia", "najem"], "czynsz"],
+      [["rata", "raty", "kredyt", "hipote", "pożyczk"], "kredyt"],
+      [["upc", "vectra", "netia", "światłowód", "internet"], "internet"],
+      [["play", "plus", "orange", "t-mobile", "telefon", "abonament"], "telefon"],
+      [["apteka", "lekarz", "dentyst", "przychodnia", "luxmed", "medicover", "leki"], "zdrowie"],
+      [["pkp", "mpk", "ztm", "bilet", "uber", "bolt", "taxi", "taksówk", "autobus", "pociąg"], "transport"],
+      [["pzu", "warta", "hestia", "allianz", "ubezpiecz", "polisa", "oc "], "ubezpieczenie"],
+      [["netflix", "spotify", "kino", "hbo", "disney", "teatr", "koncert", "max "], "rozrywka"],
+      [["zara", "reserved", "h&m", "ccc", "sinsay", "ubrani", "buty", "kurtk"], "ubrania"],
+      [["pampers", "przedszkol", "żłobek", "zlobek", "zabawk", "szkoła", "szkola"], "dzieci"],
+    ],
+    income: [
+      [["wypłat", "wyplat", "pensj", "wynagrodz", "pracodaw"], "wynagrodzenie"],
+      [["premi", "bonus", "nagrod"], "premia"],
+      [["800"], "800+"],
+      [["emerytur", "rent"], "emerytura"],
+      [["zwrot", "pit", "skarbow"], "zwrot podatku"],
+      [["olx", "allegro", "vinted", "sprzeda"], "sprzedaż"],
+      [["odsetk", "lokat"], "odsetki"],
+    ],
+  };
+  const WORD_CHARS = "a-z0-9ąćęłńóśźż";
+  const tokensOf = (s) => new Set(s.match(new RegExp(`[${WORD_CHARS}]{3,}`, "g")) || []);
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  function suggestCategory(text, kind) {
+    const t = String(text ?? "").trim().toLowerCase();
+    if (!t) return { category: null, source: null };
+    const rows = db[TABLES[kind]].filter((r) => r.description !== "");
+    const mostCommon = (matches) => {
+      if (!matches.length) return null;
+      const stats = {};
+      for (const r of matches) {
+        const s = (stats[r.category] ||= { count: 0, latest: ["", 0] });
+        s.count++;
+        if (r.date > s.latest[0] || (r.date === s.latest[0] && r.id > s.latest[1])) s.latest = [r.date, r.id];
+      }
+      return Object.keys(stats).sort((a, b) =>
+        stats[b].count - stats[a].count || cmp(stats[b].latest[0], stats[a].latest[0]) ||
+        stats[b].latest[1] - stats[a].latest[1])[0];
+    };
+    const exact = mostCommon(rows.filter((r) => r.description.trim().toLowerCase() === t));
+    if (exact) return { category: exact, source: "history" };
+    const tokens = tokensOf(t);
+    if (tokens.size) {
+      const shared = mostCommon(rows.filter((r) => [...tokensOf(r.description.toLowerCase())].some((w) => tokens.has(w))));
+      if (shared) return { category: shared, source: "history" };
+    }
+    const padded = t + " ";
+    for (const [words, cat] of KEYWORDS[kind]) {
+      if (words.some((w) => new RegExp(`(?:^|[^${WORD_CHARS}])${escapeRe(w)}`).test(padded))) {
+        return { category: cat, source: "keywords" };
+      }
+    }
+    return { category: null, source: null };
+  }
+
   // ---------- trasy ----------
   const routes = [
     ["GET", /^\/health$/, () => ({ status: "ok" })],
@@ -431,6 +670,15 @@ const LocalApi = (() => {
         .sort((a, b) => b.amount_cents - a.amount_cents || (a.date < b.date ? 1 : -1))
         .slice(0, limit)
         .map(toTransaction);
+    }],
+
+    ["GET", /^\/analytics\/insights$/, () => computeInsights()],
+
+    ["GET", /^\/analytics\/suggest-category$/, (q) => {
+      const text = q.get("text");
+      if (text == null) throw new HttpError(422, "text: wymagany parametr");
+      if (text.length > 255) throw new HttpError(422, "text: maks. 255 znaków");
+      return suggestCategory(text, validKind(q.get("kind") ?? undefined));
     }],
 
     // --- stałe opłaty ---

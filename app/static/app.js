@@ -268,8 +268,34 @@ loaders.pulpit = async () => {
   $("#income-categories-card").hidden = !incCats.length;
   renderCategoryBars($("#chart-income-categories"), incCats, "income");
   renderMonthly(last12.months);
-  await Promise.all([renderEventsReminder(), renderBillsReminder()]);
+  await Promise.all([renderEventsReminder(), renderBillsReminder(), renderInsights()]);
 };
+
+// =====================================================================
+// PODPOWIEDZI (liczone lokalnie, bez AI)
+// =====================================================================
+const LEVEL_ICON = { good: "✅", info: "ℹ️", warning: "⚠️", alert: "🚨" };
+
+async function renderInsights() {
+  const { forecast: f, insights } = await api("/analytics/insights");
+  const card = $("#insights-card");
+  card.hidden = !insights.length;
+  const fc = $("#forecast");
+  if (f.projected_income > 0 || f.projected_expenses > 0) {
+    fc.innerHTML = `
+      <div class="forecast-row"><span>Prognoza na koniec miesiąca</span>
+        <strong class="${f.projected_balance < 0 ? "neg" : ""}">${signed(f.projected_balance)}</strong></div>
+      <div class="muted">Przychody ${money(f.projected_income)} · wydatki ok. ${money(f.projected_expenses)}
+        (w tym jeszcze do zapłaty ${money(f.planned_expenses)} stałych i ok. ${money(f.projected_variable)} bieżących)</div>`;
+    fc.hidden = false;
+  } else {
+    fc.hidden = true;
+  }
+  $("#insights-list").innerHTML = insights
+    .filter((i) => i.key !== "forecast")
+    .map((i) => `<li class="ins-${i.level}"><span class="ins-ico">${LEVEL_ICON[i.level] || "•"}</span>
+      <div><strong>${esc(i.title)}</strong><div>${esc(i.text)}</div></div></li>`).join("");
+}
 
 // =====================================================================
 // Podpowiedzi kategorii (stałe + używane wcześniej)
@@ -305,13 +331,42 @@ async function renderCategoryGrid() {
     b.innerHTML = `<span class="cat-ico">${icon(c)}</span><span class="cat-name">${esc(c)}</span>`;
     b.addEventListener("click", () => {
       txForm.category.value = c;
+      clearCategoryHint();
       grid.querySelectorAll(".cat").forEach((x) => x.classList.toggle("active", x === b));
     });
     grid.appendChild(b);
   }
 }
 
+// Automatyczna kategoria: po wpisaniu opisu podpowiadamy kategorię (z historii albo słownika),
+// ale tylko jeśli użytkownik nie wybrał jej sam.
+let categoryAuto = false;
+let suggestTimer;
+txForm.description.addEventListener("input", () => {
+  clearTimeout(suggestTimer);
+  suggestTimer = setTimeout(async () => {
+    const text = txForm.description.value.trim();
+    if (!text || (txForm.category.value && !categoryAuto)) return;
+    try {
+      const s = await api("/analytics/suggest-category" + qs({ text, kind: txKind }));
+      if (!s.category || (txForm.category.value && !categoryAuto)) return;
+      txForm.category.value = s.category;
+      categoryAuto = true;
+      const hint = $("#cat-hint");
+      hint.textContent = s.source === "history" ? "✨ jak poprzednio" : "✨ podpowiedź";
+      hint.hidden = false;
+      await renderCategoryGrid();
+    } catch {}
+  }, 300);
+});
+
+function clearCategoryHint() {
+  categoryAuto = false;
+  $("#cat-hint").hidden = true;
+}
+
 txForm.category.addEventListener("input", () => {
+  clearCategoryHint();
   const v = txForm.category.value.trim().toLowerCase();
   $$("#category-grid .cat").forEach((b) => b.classList.toggle("active", b.querySelector(".cat-name").textContent === v));
 });
@@ -358,6 +413,7 @@ txForm.addEventListener("submit", async (ev) => {
   txForm.amount.value = "";
   txForm.description.value = "";
   txForm.category.value = "";
+  clearCategoryHint();
   renderCategoryGrid().catch(() => {});
   txForm.amount.focus();
 });

@@ -9,7 +9,11 @@ from fastapi import APIRouter, Depends, Query
 from app.db import TABLES, from_cents, get_db
 from app.filters import DateFilters, TransactionFilters
 from app.routers.transactions import row_to_transaction
-from app.schemas import Balance, BalanceMonth, CategoryStat, Kind, MonthlyStat, Summary, Transaction
+from app.insights import compute_insights, suggest_category
+from app.schemas import (
+    Balance, BalanceMonth, CategoryStat, CategorySuggestion, Insights, Kind, MonthlyStat, Summary,
+    Transaction,
+)
 
 router = APIRouter(prefix="/analytics", tags=["analiza"])
 
@@ -126,3 +130,19 @@ def top(db: Db, filters: Filters, kind: KindParam = Kind.expense,
         [*params, limit],
     ).fetchall()
     return [row_to_transaction(r) for r in rows]
+
+
+@router.get("/insights", response_model=Insights, summary="Inteligentne podpowiedzi i prognoza")
+def insights(db: Db):
+    """Prognoza bilansu na koniec miesiąca oraz podpowiedzi: zagrożone limity, skoki wydatków
+    w kategoriach, nietypowo duże wydatki, nadchodzące koszty z kalendarza, ocena oszczędzania.
+    Liczone lokalnie, bez AI."""
+    return compute_insights(db, date.today())
+
+
+@router.get("/suggest-category", response_model=CategorySuggestion, summary="Podpowiedz kategorię z opisu")
+def suggest(db: Db, text: Annotated[str, Query(max_length=255, description="Opis, np. „Orlen”")],
+            kind: KindParam = Kind.expense):
+    """Najpierw szuka podobnych opisów w Twoich wpisach, potem w słowniku (Biedronka → jedzenie,
+    Orlen → paliwo, Tauron → prąd...)."""
+    return suggest_category(db, text, kind.value)

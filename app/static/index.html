@@ -56,6 +56,12 @@
       <div id="events-reminder" class="card reminder reminder-events" hidden></div>
       <div id="bills-reminder" class="card reminder" hidden></div>
 
+      <div class="card insights" id="insights-card" hidden>
+        <h2>💡 Podpowiedzi</h2>
+        <div id="forecast" class="forecast"></div>
+        <ul id="insights-list" class="insights-list"></ul>
+      </div>
+
       <div class="card">
         <h2>Przychody i wydatki – 12 miesięcy</h2>
         <div class="legend">
@@ -86,14 +92,14 @@
         <label>Kwota (zł)
           <input name="amount" class="amount-input" type="text" inputmode="decimal" placeholder="0,00" required>
         </label>
+        <label>Opis
+          <input name="description" placeholder="np. Orlen, Biedronka, rachunek Tauron" maxlength="255">
+        </label>
         <div>
-          <span class="field-label">Kategoria</span>
+          <span class="field-label">Kategoria <span id="cat-hint" class="cat-hint" hidden></span></span>
           <div id="category-grid" class="cat-grid"></div>
           <input name="category" placeholder="albo wpisz własną" maxlength="50" required>
         </div>
-        <label>Opis
-          <input name="description" placeholder="opcjonalnie" maxlength="255">
-        </label>
         <label>Data
           <input name="date" type="date" required>
         </label>

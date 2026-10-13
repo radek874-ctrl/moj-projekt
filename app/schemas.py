@@ -116,6 +116,35 @@ class Balance(BaseModel):
     months: list[BalanceMonth]
 
 
+class Forecast(BaseModel):
+    month: str
+    income_so_far: float
+    expenses_so_far: float
+    planned_income: float = Field(description="Niezaksięgowane stałe przychody w tym miesiącu")
+    planned_expenses: float = Field(description="Niezapłacone stałe opłaty w tym miesiącu")
+    projected_variable: float = Field(description="Przewidywane pozostałe wydatki zmienne (wg średniej z 3 mies.)")
+    projected_income: float
+    projected_expenses: float
+    projected_balance: float = Field(description="Prognozowany bilans na koniec miesiąca")
+
+
+class Insight(BaseModel):
+    key: str = Field(description="Identyfikator podpowiedzi, np. budget:jedzenie")
+    level: str = Field(description="good | info | warning | alert")
+    title: str
+    text: str
+
+
+class Insights(BaseModel):
+    forecast: Forecast
+    insights: list[Insight]
+
+
+class CategorySuggestion(BaseModel):
+    category: str | None
+    source: str | None = Field(description="history (z Twoich wpisów) | keywords (słownik) | null")
+
+
 # ---------- stałe opłaty ----------
 
 class RecurringCreate(BaseModel):
