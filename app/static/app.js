@@ -327,6 +327,14 @@ $$("#tx-form .segmented button").forEach((b) =>
   })
 );
 
+/** Otwiera zakładkę „Dodaj” z wybranym rodzajem (expense/income). */
+function openAdd(kind) {
+  show("dodaj");
+  $(`#tx-form .segmented [data-kind="${kind}"]`).click();
+  txForm.amount.focus();
+}
+$$("[data-add]").forEach((b) => b.addEventListener("click", () => openAdd(b.dataset.add)));
+
 loaders.dodaj = async () => {
   await renderCategoryGrid();
   txForm.amount.focus();

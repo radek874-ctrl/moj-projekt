@@ -38,14 +38,19 @@
           <span class="tile-value" id="bal-balance">–</span>
           <span class="tile-note" id="bal-note"></span>
         </div>
-        <div class="tile">
+        <button type="button" class="tile tile-link" data-add="income">
           <span class="tile-label"><i class="dot dot-income"></i>Przychody</span>
           <span class="tile-value" id="bal-income">–</span>
-        </div>
-        <div class="tile">
+        </button>
+        <button type="button" class="tile tile-link" data-add="expense">
           <span class="tile-label"><i class="dot dot-expense"></i>Wydatki</span>
           <span class="tile-value" id="bal-expenses">–</span>
-        </div>
+        </button>
+      </div>
+
+      <div class="quick-add">
+        <button type="button" class="btn btn-income" data-add="income">+ Dodaj przychód</button>
+        <button type="button" class="btn btn-expense" data-add="expense">− Dodaj wydatek</button>
       </div>
 
       <div id="bills-reminder" class="card reminder" hidden></div>

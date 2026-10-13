@@ -23,6 +23,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   background: var(--bg);
@@ -215,3 +216,12 @@ main { max-width: 640px; margin: 0 auto; padding: 12px 16px; }
 .dialog h2 { margin: 0; font-size: 17px; }
 .check { flex-direction: row !important; align-items: center; gap: 8px !important; flex-wrap: wrap; }
 .check input { width: auto !important; }
+
+/* Pulpit: kafelki i przyciski szybkiego dodawania */
+.tiles, .quick-add { -webkit-user-select: none; user-select: none; }
+.tile-link { font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.tile-link::after { content: "+ dodaj ›"; font-size: 13px; color: var(--accent); margin-top: 4px; }
+.quick-add { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.btn-income, .btn-expense { padding: 14px 8px; font-size: 16px; color: #fff; }
+.btn-income { background: #147a57; }   /* ciemniejszy odcień --income: biały tekst 5,3:1 */
+.btn-expense { background: #b4471c; }  /* ciemniejszy odcień --expense: biały tekst 5,1:1 */
