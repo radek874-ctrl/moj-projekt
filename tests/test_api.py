@@ -277,3 +277,76 @@ def test_migrates_old_database(tmp_path, monkeypatch):
     with TestClient(app) as c:
         assert c.get("/expenses").json()[0]["amount"] == 12.34
         assert c.get("/analytics/balance").json()["expenses"] == 12.34
+
+
+# ---------- kalendarz ----------
+
+from datetime import date, timedelta  # noqa: E402
+
+from app.routers.events import next_after, occurrence  # noqa: E402
+
+
+def test_occurrence_clamps_day():
+    assert occurrence(date(2026, 1, 31), "monthly", 1) == date(2026, 2, 28)
+    assert occurrence(date(2026, 1, 31), "monthly", 2) == date(2026, 3, 31)
+    assert occurrence(date(2028, 2, 29), "yearly", 1) == date(2029, 2, 28)
+    assert next_after(date(2026, 5, 10), "yearly", date(2026, 5, 10)) == date(2027, 5, 10)
+    assert next_after(date(2026, 5, 10), "none", date(2026, 5, 10)) is None
+
+
+def test_events_states_and_reminders(client):
+    today = date.today()
+    d = lambda n: (today + timedelta(days=n)).isoformat()  # noqa: E731
+    oc = client.post("/events", json={"title": "OC samochodu", "date": d(5), "repeat": "yearly",
+                                      "amount": 1200, "category": "ubezpieczenie"}).json()
+    assert oc["state"] == "soon" and oc["days_left"] == 5 and oc["remind_days"] == 7
+    client.post("/events", json={"title": "Przegląd", "date": d(30), "remind_days": 14})
+    client.post("/events", json={"title": "PIT", "date": d(-2)})
+    later = client.post("/events", json={"title": "Urodziny", "date": d(10), "remind_days": 3}).json()
+    assert later["state"] == "later"
+
+    assert [e["title"] for e in client.get("/events").json()] == ["PIT", "OC samochodu", "Urodziny", "Przegląd"]
+    assert [e["title"] for e in client.get("/events/reminders").json()] == ["PIT", "OC samochodu"]
+    assert client.post("/events", json={"title": " ", "date": d(1)}).status_code == 422
+    assert client.post("/events", json={"title": "x", "date": d(1), "remind_days": 61}).status_code == 422
+
+
+def test_event_done_creates_expense_and_moves_to_next_year(client):
+    today = date.today()
+    due = today + timedelta(days=3)
+    oc = client.post("/events", json={"title": "OC", "date": due.isoformat(), "repeat": "yearly",
+                                      "category": "Ubezpieczenie"}).json()
+    done = client.post(f"/events/{oc['id']}/done", json={"amount": 1234.5}).json()
+    assert done["next_date"] == occurrence(due, "yearly", 1).isoformat()
+    assert done["state"] == "later"
+    exp = client.get("/expenses").json()[0]
+    assert (exp["amount"], exp["category"], exp["description"], exp["date"]) == \
+        (1234.5, "ubezpieczenie", "OC", today.isoformat())
+
+    assert client.post(f"/events/{oc['id']}/undo").json()["next_date"] == due.isoformat()
+    assert client.post(f"/events/{oc['id']}/undo").status_code == 409
+
+    once = client.post("/events", json={"title": "Lekarz", "date": due.isoformat()}).json()
+    r = client.post(f"/events/{once['id']}/done").json()
+    assert r["state"] == "done" and r["next_date"] is None
+    assert client.post(f"/events/{once['id']}/done").status_code == 409
+    assert len(client.get("/expenses").json()) == 1  # bez kwoty nie ma wydatku
+
+
+def test_event_calendar_and_update(client):
+    ev = client.post("/events", json={"title": "Rata", "date": "2026-01-31", "repeat": "monthly"}).json()
+    client.post("/events", json={"title": "Wizyta", "date": "2026-02-10"})
+    feb = client.get("/events/calendar", params={"month": "2026-02"}).json()
+    assert [(i["title"], i["date"]) for i in feb] == [("Wizyta", "2026-02-10"), ("Rata", "2026-02-28")]
+    assert client.get("/events/calendar", params={"month": "2025-12"}).json() == []
+
+    client.post(f"/events/{ev['id']}/done")  # odhacza styczeń
+    jan = client.get("/events/calendar", params={"month": "2026-01"}).json()
+    assert jan[0]["done"] is True
+
+    upd = client.patch(f"/events/{ev['id']}", json={"date": "2026-03-15", "remind_days": 1}).json()
+    assert upd["next_date"] == "2026-03-15" and upd["remind_days"] == 1  # zmiana daty zeruje postęp
+    assert client.patch(f"/events/{ev['id']}", json={"category": "Kredyt"}).json()["category"] == "kredyt"
+    assert client.patch(f"/events/{ev['id']}", json={"category": ""}).json()["category"] is None
+    assert client.delete(f"/events/{ev['id']}").status_code == 204
+    assert client.get("/events/calendar", params={"month": "2026-13"}).status_code == 422

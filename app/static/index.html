@@ -53,6 +53,7 @@
         <button type="button" class="btn btn-expense" data-add="expense">− Dodaj wydatek</button>
       </div>
 
+      <div id="events-reminder" class="card reminder reminder-events" hidden></div>
       <div id="bills-reminder" class="card reminder" hidden></div>
 
       <div class="card">
@@ -165,6 +166,69 @@
       </form>
     </section>
 
+    <!-- KALENDARZ -->
+    <section id="view-kalendarz" class="view" hidden>
+      <div class="card">
+        <div class="month-nav cal-nav">
+          <button id="cal-prev" class="icon-btn" aria-label="Poprzedni miesiąc">‹</button>
+          <div class="month-nav-center"><strong id="cal-month"></strong></div>
+          <button id="cal-next" class="icon-btn" aria-label="Następny miesiąc">›</button>
+        </div>
+        <div class="cal-grid cal-head">
+          <span>Pn</span><span>Wt</span><span>Śr</span><span>Cz</span><span>Pt</span><span>So</span><span>Nd</span>
+        </div>
+        <div id="cal-grid" class="cal-grid"></div>
+        <div id="cal-day" class="cal-day"></div>
+      </div>
+
+      <div class="card">
+        <h2>Terminy</h2>
+        <ul id="events-list" class="list events"></ul>
+      </div>
+
+      <form id="event-form" class="card form" autocomplete="off">
+        <h2>Dodaj ważny termin</h2>
+        <div id="event-presets" class="chips"></div>
+        <label>Co?
+          <input name="title" placeholder="np. OC samochodu" maxlength="100" required>
+        </label>
+        <div class="row">
+          <label>Kiedy?
+            <input name="date" type="date" required>
+          </label>
+          <label>Powtarzaj
+            <select name="repeat">
+              <option value="none">jednorazowo</option>
+              <option value="monthly">co miesiąc</option>
+              <option value="yearly">co rok</option>
+            </select>
+          </label>
+        </div>
+        <label>Przypomnij
+          <select name="remind_days">
+            <option value="0">w dniu terminu</option>
+            <option value="1">1 dzień wcześniej</option>
+            <option value="3">3 dni wcześniej</option>
+            <option value="7" selected>tydzień wcześniej</option>
+            <option value="14">2 tygodnie wcześniej</option>
+            <option value="30">miesiąc wcześniej</option>
+          </select>
+        </label>
+        <div class="row">
+          <label>Kwota (opcjonalnie)
+            <input name="amount" type="text" inputmode="decimal" placeholder="np. 1200">
+          </label>
+          <label>Kategoria wydatku
+            <input name="category" list="expense-categories" placeholder="np. ubezpieczenie" maxlength="50">
+          </label>
+        </div>
+        <label>Notatka
+          <input name="note" maxlength="255" placeholder="opcjonalnie, np. nr polisy">
+        </label>
+        <button class="btn" type="submit">Dodaj termin</button>
+      </form>
+    </section>
+
     <!-- HISTORIA -->
     <section id="view-historia" class="view" hidden>
       <div class="periods" aria-label="Rodzaj">
@@ -204,6 +268,7 @@
     <button data-view="pulpit" class="active"><span class="ico">📊</span>Pulpit</button>
     <button data-view="dodaj"><span class="ico">➕</span>Dodaj</button>
     <button data-view="oplaty"><span class="ico">🧾</span>Opłaty</button>
+    <button data-view="kalendarz"><span class="ico">📅</span>Kalendarz<span id="cal-badge" class="badge" hidden></span></button>
     <button data-view="historia"><span class="ico">📋</span>Historia</button>
     <button data-view="budzety"><span class="ico">🎯</span>Limity</button>
   </nav>

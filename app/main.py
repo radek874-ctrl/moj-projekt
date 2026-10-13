@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from app.db import init_db
-from app.routers import analytics, budgets, recurring, transactions
+from app.routers import analytics, budgets, events, recurring, transactions
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -23,6 +23,8 @@ TAGS = [
                                          "Te same operacje co dla wydatków."},
     {"name": "stałe opłaty", "description": "Co miesiąc powtarzające się pozycje (gaz, prąd, kredyt, pensja). "
                                             "Jedno wywołanie `/pay` księguje je w danym miesiącu."},
+    {"name": "kalendarz", "description": "Ważne terminy (OC, przegląd, podatki, urodziny) z przypomnieniem "
+                                         "kilka dni wcześniej; jednorazowe lub co miesiąc / co rok."},
     {"name": "analiza", "description": "Bilans domowy oraz statystyki wydatków lub przychodów (`kind`)."},
     {"name": "budżety", "description": "Miesięczne limity wydatków na kategorie."},
     {"name": "system", "description": "Stan usługi."},
@@ -31,7 +33,7 @@ TAGS = [
 app = FastAPI(
     title="Budżet domowy – API",
     description=(
-        "Przychody, wydatki, stałe opłaty, budżety i analiza.\n\n"
+        "Przychody, wydatki, stałe opłaty, kalendarz terminów, budżety i analiza.\n\n"
         "Kwoty w złotych (maks. 2 miejsca po przecinku), daty w formacie `RRRR-MM-DD`, "
         "miesiące `RRRR-MM`. Kategorie są zapisywane małymi literami."
     ),
@@ -43,6 +45,7 @@ app = FastAPI(
 app.include_router(transactions.expenses_router)
 app.include_router(transactions.incomes_router)
 app.include_router(recurring.router)
+app.include_router(events.router)
 app.include_router(analytics.router)
 app.include_router(budgets.router)
 

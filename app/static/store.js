@@ -14,13 +14,16 @@ const LocalApi = (() => {
       expenses: Array.isArray(data?.expenses) ? data.expenses : [],
       incomes: Array.isArray(data?.incomes) ? data.incomes : [],
       recurring: Array.isArray(data?.recurring) ? data.recurring : [],
+      events: Array.isArray(data?.events) ? data.events : [],
       budgets: data?.budgets && typeof data.budgets === "object" ? data.budgets : {},
       nextId: data?.nextId || 1,
       nextRecurringId: data?.nextRecurringId || 1,
+      nextEventId: data?.nextEventId || 1,
     };
     const ids = [...db.expenses, ...db.incomes].map((e) => e.id + 1);
     db.nextId = Math.max(db.nextId, 1, ...ids);
     db.nextRecurringId = Math.max(db.nextRecurringId, 1, ...db.recurring.map((r) => r.id + 1));
+    db.nextEventId = Math.max(db.nextEventId, 1, ...db.events.map((e) => e.id + 1));
     return db;
   }
 
@@ -215,6 +218,94 @@ const LocalApi = (() => {
     return d;
   }
 
+  // ---------- kalendarz: arytmetyka terminów (jak app/routers/events.py) ----------
+  const MAX_STEPS = 2400;
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const todayIso = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  };
+  const dayDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+
+  function occurrence(base, repeat, n) {
+    if (repeat === "none") return base;
+    const [by, bm, bd] = base.split("-").map(Number);
+    const total = bm - 1 + (repeat === "monthly" ? n : 12 * n);
+    const y = by + Math.floor(total / 12), m = (total % 12) + 1;
+    return `${y}-${pad2(m)}-${pad2(Math.min(bd, daysInMonth(y, m)))}`;
+  }
+
+  function nextAfter(base, repeat, doneUntil) {
+    if (!doneUntil) return base;
+    if (repeat === "none") return doneUntil >= base ? null : base;
+    for (let n = 0; n < MAX_STEPS; n++) {
+      const occ = occurrence(base, repeat, n);
+      if (occ > doneUntil) return occ;
+    }
+    return null;
+  }
+
+  function previousBefore(base, repeat, current) {
+    let prev = null;
+    for (let n = 0; n < MAX_STEPS; n++) {
+      const occ = occurrence(base, repeat, n);
+      if (occ >= current || (repeat === "none" && n > 0)) break;
+      prev = occ;
+    }
+    return prev;
+  }
+
+  const STATE_ORDER = { overdue: 0, soon: 1, later: 2, done: 3 };
+
+  function toEvent(ev) {
+    const next = nextAfter(ev.date, ev.repeat, ev.done_until);
+    const daysLeft = next ? dayDiff(todayIso(), next) : null;
+    const state = next == null ? "done" : daysLeft < 0 ? "overdue" : daysLeft <= ev.remind_days ? "soon" : "later";
+    return {
+      id: ev.id, title: ev.title, date: ev.date, repeat: ev.repeat, remind_days: ev.remind_days,
+      amount: ev.amount_cents != null ? fromCents(ev.amount_cents) : null,
+      category: ev.category, note: ev.note, next_date: next, days_left: daysLeft, state,
+    };
+  }
+
+  const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  // Kolejność jak w API: stan, potem najbliższa data, potem tytuł.
+  const listEvents = () => db.events.map(toEvent).sort((a, b) =>
+    STATE_ORDER[a.state] - STATE_ORDER[b.state] ||
+    cmp(a.next_date || "9999-12-31", b.next_date || "9999-12-31") ||
+    cmp(a.title, b.title));
+
+  function eventOr404(id) {
+    const ev = db.events.find((x) => x.id === +id);
+    if (!ev) throw new HttpError(404, "Nie znaleziono terminu");
+    return ev;
+  }
+
+  function parseEvent(body) {
+    const title = String(body.title ?? "").trim();
+    if (!title) throw new HttpError(422, "tytuł nie może być pusty");
+    if (title.length > 100) throw new HttpError(422, "tytuł może mieć maks. 100 znaków");
+    const repeat = body.repeat ?? "none";
+    if (!["none", "monthly", "yearly"].includes(repeat)) throw new HttpError(422, "repeat: none, monthly lub yearly");
+    const remind = body.remind_days ?? 7;
+    if (!Number.isInteger(Number(remind)) || remind < 0 || remind > 60) {
+      throw new HttpError(422, "remind_days: od 0 do 60 dni");
+    }
+    const note = String(body.note ?? "").trim();
+    if (note.length > 255) throw new HttpError(422, "notatka może mieć maks. 255 znaków");
+    const cat = body.category == null || !String(body.category).trim() ? null : category(body.category);
+    return {
+      title,
+      date: validDate(body.date),
+      repeat,
+      remind_days: Number(remind),
+      amount_cents: body.amount != null ? toCents(body.amount) : null,
+      category: cat,
+      note,
+    };
+  }
+
   // ---------- trasy ----------
   const routes = [
     ["GET", /^\/health$/, () => ({ status: "ok" })],
@@ -405,6 +496,79 @@ const LocalApi = (() => {
       }, r.id);
       save();
       return toTransaction(e);
+    }],
+
+    // --- kalendarz (jak app/routers/events.py) ---
+    ["GET", /^\/events$/, () => listEvents()],
+
+    ["GET", /^\/events\/reminders$/, () =>
+      listEvents().filter((e) => e.state === "overdue" || e.state === "soon")],
+
+    ["GET", /^\/events\/calendar$/, (q) => {
+      const month = q.get("month");
+      if (!month) throw new HttpError(422, "month: wymagany parametr RRRR-MM");
+      validMonth(month);
+      const [y, m] = month.split("-").map(Number);
+      const start = `${month}-01`;
+      const end = `${month}-${pad2(daysInMonth(y, m))}`;
+      const items = [];
+      for (const ev of db.events) {
+        for (let n = 0; n < MAX_STEPS; n++) {
+          const occ = occurrence(ev.date, ev.repeat, n);
+          if (occ > end || (ev.repeat === "none" && n > 0)) break;
+          if (occ >= start) {
+            items.push({ event_id: ev.id, title: ev.title, date: occ, done: !!ev.done_until && occ <= ev.done_until });
+          }
+        }
+      }
+      return items.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.title < b.title ? -1 : 1));
+    }],
+
+    ["POST", /^\/events$/, (q, body) => {
+      const ev = { id: db.nextEventId++, ...parseEvent(body), done_until: null };
+      db.events.push(ev);
+      save();
+      return toEvent(ev);
+    }],
+
+    ["PATCH", /^\/events\/(\d+)$/, (q, body, [id]) => {
+      const ev = eventOr404(id);
+      const current = { title: ev.title, date: ev.date, repeat: ev.repeat, remind_days: ev.remind_days,
+        amount: ev.amount_cents != null ? fromCents(ev.amount_cents) : null, category: ev.category, note: ev.note };
+      const changes = Object.fromEntries(Object.entries(body).filter(([, v]) => v != null));
+      const next = parseEvent({ ...current, ...changes });
+      if ("date" in changes) ev.done_until = null; // nowa data = liczymy od nowa
+      Object.assign(ev, next);
+      save();
+      return toEvent(ev);
+    }],
+
+    ["DELETE", /^\/events\/(\d+)$/, (q, body, [id]) => {
+      const ev = eventOr404(id);
+      db.events = db.events.filter((x) => x !== ev);
+      save();
+      return null;
+    }],
+
+    ["POST", /^\/events\/(\d+)\/done$/, (q, body, [id]) => {
+      const ev = eventOr404(id);
+      const current = nextAfter(ev.date, ev.repeat, ev.done_until);
+      if (current == null) throw new HttpError(409, "Ten termin jest już zrobiony");
+      const expense = body.amount != null
+        ? { amount_cents: toCents(body.amount), category: ev.category || "inne", description: ev.title, date: todayIso() }
+        : null;
+      ev.done_until = current;
+      if (expense) insert("expense", expense);
+      save();
+      return toEvent(ev);
+    }],
+
+    ["POST", /^\/events\/(\d+)\/undo$/, (q, body, [id]) => {
+      const ev = eventOr404(id);
+      if (!ev.done_until) throw new HttpError(409, "Nie ma czego cofnąć");
+      ev.done_until = previousBefore(ev.date, ev.repeat, ev.done_until);
+      save();
+      return toEvent(ev);
     }],
 
     // --- budżety ---

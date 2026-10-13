@@ -112,11 +112,11 @@ main { max-width: 640px; margin: 0 auto; padding: 12px 16px; }
 /* Formularze */
 .form { display: flex; flex-direction: column; gap: 12px; }
 .form label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--text-2); }
-.form input {
+.form input, .form select {
   font: inherit; font-size: 17px; color: var(--text); background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 10px; padding: 11px 12px; width: 100%;
 }
-.form input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.form input:focus, .form select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
 
 .btn {
@@ -147,8 +147,9 @@ main { max-width: 640px; margin: 0 auto; padding: 12px 16px; }
   padding-bottom: env(safe-area-inset-bottom);
 }
 .tabbar button {
-  flex: 1; border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px;
+  flex: 1; border: 0; background: none; color: var(--muted); font: inherit; font-size: 11px;
   padding: 8px 0 10px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  position: relative; min-width: 0;
 }
 .tabbar .ico { font-size: 20px; filter: grayscale(1); opacity: .7; }
 .tabbar button.active { color: var(--accent); font-weight: 600; }
@@ -225,3 +226,34 @@ main { max-width: 640px; margin: 0 auto; padding: 12px 16px; }
 .btn-income, .btn-expense { padding: 14px 8px; font-size: 16px; color: #fff; }
 .btn-income { background: #147a57; }   /* ciemniejszy odcień --income: biały tekst 5,3:1 */
 .btn-expense { background: #b4471c; }  /* ciemniejszy odcień --expense: biały tekst 5,1:1 */
+
+/* ---------- kalendarz ---------- */
+.badge { position: absolute; top: 4px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; }
+.cal-nav { padding: 0 0 8px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-head span { text-align: center; font-size: 12px; color: var(--muted); padding-bottom: 4px; }
+.cal-cell { aspect-ratio: 1 / 1; border: 1px solid transparent; border-radius: 10px; background: var(--surface-2);
+  color: var(--text); font: inherit; font-size: 14px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 3px; padding: 0; min-width: 0; }
+.cal-cell.today { border-color: var(--accent); font-weight: 700; }
+.cal-cell.selected { background: var(--accent-bg); color: var(--accent-ink); }
+.cal-dots { display: flex; gap: 2px; height: 6px; }
+.cal-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+.cal-dots i.done { background: var(--muted); }
+.cal-cell.selected .cal-dots i { background: var(--accent-ink); }
+.cal-day { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.cal-day:empty { display: none; }
+.cal-day-head { font-weight: 600; }
+.cal-day-item.done { color: var(--muted); text-decoration: line-through; }
+
+.events li .when { font-weight: 600; color: var(--text-2); }
+.events li.ev-soon .when { color: var(--warn); }
+.events li.ev-overdue .when { color: var(--bad); }
+.events li.ev-done .title, .events li.ev-done .when { color: var(--muted); }
+.reminder-events { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); align-items: flex-start; }
+.reminder-events .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rem-item { font-size: 14px; color: var(--text-2); }
+.rem-item b { color: var(--warn); font-weight: 600; }
+.rem-item.overdue b { color: var(--bad); }
+.gcal { text-align: center; text-decoration: none; display: block; }

@@ -41,6 +41,20 @@ CREATE TABLE IF NOT EXISTS budgets (
     category            TEXT PRIMARY KEY,
     monthly_limit_cents INTEGER NOT NULL CHECK (monthly_limit_cents > 0)
 );
+
+-- Ważne terminy (OC, przegląd, urodziny...). done_until = data ostatniego
+-- wykonanego wystąpienia; następne wystąpienie liczymy od niej.
+CREATE TABLE IF NOT EXISTS events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    title        TEXT    NOT NULL,
+    date         TEXT    NOT NULL,
+    repeat       TEXT    NOT NULL DEFAULT 'none' CHECK (repeat IN ('none', 'monthly', 'yearly')),
+    remind_days  INTEGER NOT NULL DEFAULT 7 CHECK (remind_days BETWEEN 0 AND 60),
+    amount_cents INTEGER CHECK (amount_cents IS NULL OR amount_cents > 0),
+    category     TEXT,
+    note         TEXT    NOT NULL DEFAULT '',
+    done_until   TEXT
+);
 """
     + "".join(_TRANSACTION_TABLE.format(table=t) for t in TABLES.values())
 )

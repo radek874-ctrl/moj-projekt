@@ -1,7 +1,7 @@
 # Budżet domowy – API i aplikacja
 
-Przychody, wydatki, stałe opłaty (gaz, prąd, woda, kredyt…), limity wydatków
-i analiza budżetu domowego. Ten sam kod działa w dwóch trybach:
+Przychody, wydatki, stałe opłaty (gaz, prąd, woda, kredyt…), kalendarz ważnych
+terminów z przypomnieniami, limity wydatków i analiza budżetu domowego. Ten sam kod działa w dwóch trybach:
 
 | Tryb | Gdzie są dane | Jak uruchomić |
 |---|---|---|
@@ -15,6 +15,7 @@ i analiza budżetu domowego. Ten sam kod działa w dwóch trybach:
 | **Wydatek** | `/expenses` | zakupy 120 zł, paliwo 250 zł |
 | **Przychód** | `/incomes` | wynagrodzenie 7200 zł, 800+ |
 | **Stała pozycja** | `/recurring` | prąd ok. 180 zł do 15. każdego miesiąca |
+| **Termin** | `/events` | OC samochodu co rok 18.10, przypomnienie tydzień wcześniej |
 | **Limit** | `/budgets` | jedzenie maks. 1500 zł miesięcznie |
 | **Bilans** | `/analytics/balance` | przychody − wydatki w okresie |
 
@@ -71,6 +72,27 @@ a cofnięcie to usunięcie tej operacji.
 `kind`: `expense` (opłata, domyślnie) albo `income` (stały przychód).
 `day`: 1–28. Ponowna płatność w tym samym miesiącu zwraca `409`.
 
+### Kalendarz terminów `/events`
+
+Ważne daty (OC, przegląd, podatki, urodziny) z przypomnieniem kilka dni
+wcześniej. Termin może być jednorazowy albo powtarzać się co miesiąc / co rok
+(dzień przycinany do końca miesiąca, np. 31 → 28 lutego).
+
+| Metoda | Ścieżka | Opis |
+|---|---|---|
+| `POST` | `/events` | Dodaj: `{"title": "OC samochodu", "date": "2026-10-18", "repeat": "yearly", "remind_days": 7, "amount": 1200, "category": "ubezpieczenie"}` |
+| `GET` | `/events` | Wszystkie terminy, najpilniejsze pierwsze, z `next_date`, `days_left` i `state` |
+| `GET` | `/events/reminders` | Tylko to, co wymaga uwagi teraz (`overdue` i `soon`) |
+| `GET` | `/events/calendar?month=2026-10` | Wystąpienia w miesiącu (do siatki kalendarza) |
+| `POST` | `/events/{id}/done` | Odhacz najbliższe wystąpienie; z `{"amount": 1234.50}` zapisuje też wydatek |
+| `POST` | `/events/{id}/undo` | Cofnij ostatnie odhaczenie |
+| `PATCH` | `/events/{id}` | Zmień (nowa `date` liczy terminy od nowa; `"category": ""` czyści kategorię) |
+| `DELETE` | `/events/{id}` | Usuń |
+
+`state`: `soon` – w okresie przypomnienia (≤ `remind_days` dni do terminu),
+`overdue` – po terminie i nieodhaczony, `later` – jeszcze nie czas,
+`done` – jednorazowy i zrobiony. `repeat`: `none`, `monthly`, `yearly`.
+
 ### Analiza `/analytics`
 
 | Ścieżka | Zwraca |
@@ -99,7 +121,11 @@ Wszystkie przyjmują `date_from` i `date_to`. Oprócz `balance` przyjmują też
 Zakładki: **Pulpit** (bilans, przypomnienie o niezapłaconych rachunkach,
 wykres przychodów i wydatków, kategorie), **Dodaj** (wydatek/przychód,
 kategorie z ikonami, import, kopia zapasowa), **Opłaty** (stałe pozycje
-z przyciskiem „Zapłać”), **Historia**, **Limity**.
+z przyciskiem „Zapłać”), **Kalendarz** (siatka miesiąca, terminy, przypomnienia,
+link „Dodaj do Kalendarza Google” dla powiadomień systemowych), **Historia**, **Limity**.
+
+Przypomnienia pokazują się na Pulpicie i jako licznik na zakładce (oraz na ikonie
+aplikacji, jeśli telefon to obsługuje) – po otwarciu aplikacji.
 
 ### Tryb bez serwera (GitHub Pages)
 
@@ -146,6 +172,7 @@ app/
   routers/
     transactions.py    # /expenses i /incomes (wspólna fabryka) + import CSV
     recurring.py       # /recurring – stałe opłaty i przychody
+    events.py          # /events – kalendarz terminów i przypomnienia
     analytics.py       # /analytics – bilans i statystyki
     budgets.py         # /budgets – limity wydatków
   static/              # aplikacja (HTML/CSS/JS, manifest, service worker)

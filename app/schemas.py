@@ -171,6 +171,91 @@ class BookRequest(BaseModel):
                                   description="Kwota z rachunku, jeśli inna niż typowa")
 
 
+# ---------- kalendarz ----------
+
+class Repeat(str, Enum):
+    """Powtarzanie terminu."""
+
+    none = "none"
+    monthly = "monthly"
+    yearly = "yearly"
+
+
+class EventState(str, Enum):
+    """Stan terminu względem dzisiejszej daty."""
+
+    overdue = "overdue"   # po terminie, nieodhaczony
+    soon = "soon"         # w okresie przypomnienia
+    later = "later"       # jeszcze nie czas
+    done = "done"         # jednorazowy, wykonany
+
+
+class EventCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=100, examples=["OC samochodu"])
+    date: dt.date = Field(description="Termin (dla powtarzanych: pierwsze wystąpienie)")
+    repeat: Repeat = Repeat.none
+    remind_days: int = Field(default=7, ge=0, le=60, description="Ile dni wcześniej przypomnieć")
+    amount: Amount | None = Field(default=None, gt=0, max_digits=12, decimal_places=2,
+                                  description="Przewidywany koszt (opcjonalnie)")
+    category: str | None = Field(default=None, max_length=50,
+                                 description="Kategoria wydatku przy opłaceniu (opcjonalnie)")
+    note: str = Field(default="", max_length=255)
+
+    @field_validator("title")
+    @classmethod
+    def _title(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("tytuł nie może być pusty")
+        return v
+
+    @field_validator("category")
+    @classmethod
+    def _category(cls, v: str | None) -> str | None:
+        return None if v is None or not v.strip() else _normalize_category(v)
+
+
+class EventUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=100)
+    date: dt.date | None = None
+    repeat: Repeat | None = None
+    remind_days: int | None = Field(default=None, ge=0, le=60)
+    amount: Amount | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    category: str | None = Field(default=None, max_length=50)
+    note: str | None = Field(default=None, max_length=255)
+
+    @field_validator("category")
+    @classmethod
+    def _category(cls, v: str | None) -> str | None:
+        return None if v is None or not v.strip() else _normalize_category(v)
+
+
+class Event(BaseModel):
+    id: int
+    title: str
+    date: dt.date
+    repeat: Repeat
+    remind_days: int
+    amount: float | None
+    category: str | None
+    note: str
+    next_date: dt.date | None = Field(description="Najbliższy niewykonany termin (null = wykonany)")
+    days_left: int | None = Field(description="Dni do terminu (ujemne = po terminie)")
+    state: EventState
+
+
+class EventDone(BaseModel):
+    amount: Amount | None = Field(default=None, gt=0, max_digits=12, decimal_places=2,
+                                  description="Jeśli podane, zapisuje też wydatek z tą kwotą")
+
+
+class CalendarItem(BaseModel):
+    event_id: int
+    title: str
+    date: dt.date
+    done: bool
+
+
 # ---------- budżety ----------
 
 class BudgetIn(BaseModel):

@@ -268,7 +268,7 @@ loaders.pulpit = async () => {
   $("#income-categories-card").hidden = !incCats.length;
   renderCategoryBars($("#chart-income-categories"), incCats, "income");
   renderMonthly(last12.months);
-  await renderBillsReminder();
+  await Promise.all([renderEventsReminder(), renderBillsReminder()]);
 };
 
 // =====================================================================
@@ -528,6 +528,283 @@ recForm.addEventListener("submit", async (ev) => {
   recForm.day.value = 10;
   loaders.oplaty();
 });
+
+// =====================================================================
+// KALENDARZ (ważne terminy z przypomnieniami)
+// =====================================================================
+// Gotowe terminy: [tytuł, ikona, powtarzanie, kategoria wydatku]
+const EVENT_PRESETS = [
+  ["OC samochodu", "🚗", "yearly", "ubezpieczenie"], ["Przegląd auta", "🔧", "yearly", "transport"],
+  ["Ubezpieczenie domu", "🏠", "yearly", "ubezpieczenie"], ["Podatek od nieruchomości", "🧾", "yearly", "podatki"],
+  ["PIT", "📄", "yearly", ""], ["Urodziny", "🎂", "yearly", ""], ["Wizyta u lekarza", "🩺", "none", "zdrowie"],
+  ["Wymiana opon", "🛞", "yearly", "transport"],
+];
+const REPEAT_LABEL = { none: "jednorazowo", monthly: "co miesiąc", yearly: "co rok" };
+const DAYS_PL = (n) => (n === 1 ? "1 dzień" : `${n} dni`);
+
+let calMonth = monthKey(new Date());
+let calSelected = iso(new Date());
+const evForm = $("#event-form");
+evForm.date.value = iso(new Date());
+
+function whenLabel(e) {
+  if (e.state === "done") return "✓ zrobione";
+  if (e.days_left === 0) return "dziś!";
+  if (e.days_left === 1) return "jutro";
+  if (e.days_left < 0) return `po terminie ${DAYS_PL(-e.days_left)}`;
+  return `za ${DAYS_PL(e.days_left)}`;
+}
+
+/** Link do Google Kalendarza z gotowym wydarzeniem całodniowym (prawdziwe powiadomienie w telefonie). */
+function googleCalendarUrl(e) {
+  const start = (e.next_date || e.date).replaceAll("-", "");
+  const d = new Date(`${e.next_date || e.date}T12:00:00`);
+  d.setDate(d.getDate() + 1);
+  const end = iso(d).replaceAll("-", "");
+  const details = [e.note, e.amount ? `Kwota: ${money(e.amount)}` : "",
+    `Przypomnienie: ${e.remind_days ? DAYS_PL(e.remind_days) + " wcześniej" : "w dniu terminu"}`].filter(Boolean).join("\n");
+  const params = new URLSearchParams({ action: "TEMPLATE", text: e.title, dates: `${start}/${end}`, details });
+  if (e.repeat !== "none") params.set("recur", `RRULE:FREQ=${e.repeat === "yearly" ? "YEARLY" : "MONTHLY"}`);
+  return "https://calendar.google.com/calendar/render?" + params.toString();
+}
+
+function eventItem(e) {
+  const li = document.createElement("li");
+  li.className = `ev-${e.state}`;
+  const date = e.next_date || e.date;
+  li.innerHTML = `
+    <div class="meta">
+      <div class="title">${esc(e.title)}</div>
+      <div class="sub"><span class="when">${whenLabel(e)}</span> · ${formatDate(date)}
+        · ${REPEAT_LABEL[e.repeat]}${e.amount ? " · " + money(e.amount) : ""}</div>
+      ${e.note ? `<div class="sub">${esc(e.note)}</div>` : ""}
+    </div>
+    ${e.state === "done"
+      ? '<button class="btn btn-small btn-ghost" data-act="undo">Przywróć</button>'
+      : '<button class="btn btn-small" data-act="done">Zrobione</button>'}
+    <button class="icon-btn" data-act="edit" aria-label="Edytuj">✎</button>`;
+
+  li.querySelector('[data-act="done"]')?.addEventListener("click", async () => {
+    const data = await openDialog(
+      `${e.title} – zrobione`,
+      `<label>Zapisać jako wydatek? Kwota (zł)
+         <input name="amount" type="text" inputmode="decimal" value="${e.amount ? String(e.amount).replace(".", ",") : ""}"
+           placeholder="zostaw puste, jeśli bez wydatku">
+       </label>
+       <p class="muted">${e.repeat === "none" ? "Termin zostanie oznaczony jako zrobiony."
+         : `Następny termin: ${formatDate(nextOccurrence(date, e.repeat))}.`}</p>`,
+      "Zrobione"
+    );
+    if (!data) return;
+    const raw = String(data.get("amount") || "").trim();
+    const amount = raw ? parseAmount(raw) : null;
+    if (raw && !(amount > 0)) return toast("Podaj poprawną kwotę albo zostaw puste");
+    try {
+      await api(`/events/${e.id}/done`, json("POST", amount ? { amount } : {}));
+      toast(amount ? `Zrobione, zapisano wydatek ${money(amount)}` : "Zrobione ✓");
+    } catch (err) {
+      toast("Błąd: " + err.message);
+    }
+    loaders.kalendarz();
+  });
+
+  li.querySelector('[data-act="undo"]')?.addEventListener("click", async () => {
+    await api(`/events/${e.id}/undo`, { method: "POST" });
+    loaders.kalendarz();
+  });
+
+  li.querySelector('[data-act="edit"]').addEventListener("click", async () => {
+    const opt = (v, label, cur) => `<option value="${v}"${String(cur) === String(v) ? " selected" : ""}>${label}</option>`;
+    const data = await openDialog(
+      "Edytuj termin",
+      `<label>Co? <input name="title" value="${esc(e.title)}" maxlength="100" required></label>
+       <label>Data <input name="date" type="date" value="${e.date}" required></label>
+       <label>Powtarzaj <select name="repeat">${Object.entries(REPEAT_LABEL).map(([v, l]) => opt(v, l, e.repeat)).join("")}</select></label>
+       <label>Przypomnij (dni wcześniej)
+         <input name="remind_days" type="number" min="0" max="60" value="${e.remind_days}" required></label>
+       <label>Kwota (opcjonalnie)
+         <input name="amount" type="text" inputmode="decimal" value="${e.amount ? String(e.amount).replace(".", ",") : ""}"></label>
+       <label>Kategoria wydatku <input name="category" list="expense-categories" value="${esc(e.category || "")}" maxlength="50"></label>
+       <label>Notatka <input name="note" value="${esc(e.note)}" maxlength="255"></label>
+       <a class="btn btn-secondary gcal" href="${googleCalendarUrl(e)}" target="_blank" rel="noopener">📆 Dodaj do Kalendarza Google</a>
+       ${e.repeat !== "none" ? '<label class="check"><input type="checkbox" name="undo"> Cofnij ostatnie „zrobione”</label>' : ""}
+       <label class="check"><input type="checkbox" name="delete"> Usuń ten termin</label>`,
+      "Zapisz"
+    );
+    if (!data) return;
+    try {
+      if (data.get("delete")) {
+        await api(`/events/${e.id}`, { method: "DELETE" });
+        toast("Usunięto");
+      } else {
+        const rawAmount = String(data.get("amount") || "").trim();
+        const patch = {
+          title: data.get("title"),
+          repeat: data.get("repeat"),
+          remind_days: Number(data.get("remind_days")),
+          category: data.get("category") || "",
+          note: data.get("note"),
+        };
+        if (rawAmount) patch.amount = parseAmount(rawAmount);
+        if (data.get("date") !== e.date) patch.date = data.get("date");
+        await api(`/events/${e.id}`, json("PATCH", patch));
+        if (data.get("undo")) await api(`/events/${e.id}/undo`, { method: "POST" });
+        toast("Zapisano");
+      }
+    } catch (err) {
+      toast("Błąd: " + err.message);
+    }
+    loaders.kalendarz();
+  });
+  return li;
+}
+
+function nextOccurrence(isoDate, repeat) {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const months = repeat === "yearly" ? 12 : 1;
+  const last = new Date(y, m - 1 + months + 1, 0).getDate();
+  return iso(new Date(y, m - 1 + months, Math.min(d, last)));
+}
+
+function renderCalendarGrid(items) {
+  const [y, m] = calMonth.split("-").map(Number);
+  const first = new Date(y, m - 1, 1);
+  const days = new Date(y, m, 0).getDate();
+  const offset = (first.getDay() + 6) % 7; // poniedziałek = 0
+  const today = iso(new Date());
+  const byDay = {};
+  items.forEach((i) => (byDay[i.date] ||= []).push(i));
+
+  const grid = $("#cal-grid");
+  grid.innerHTML = "<span></span>".repeat(offset);
+  for (let d = 1; d <= days; d++) {
+    const date = `${calMonth}-${pad(d)}`;
+    const list = byDay[date] || [];
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "cal-cell" + (date === today ? " today" : "") + (date === calSelected ? " selected" : "");
+    b.innerHTML = `<span>${d}</span><span class="cal-dots">${list.map((i) =>
+      `<i class="${i.done ? "done" : ""}"></i>`).join("")}</span>`;
+    b.setAttribute("aria-label", `${d} ${MONTHS_FULL[m - 1]}${list.length ? ": " + list.map((i) => i.title).join(", ") : ""}`);
+    b.addEventListener("click", () => {
+      calSelected = date;
+      grid.querySelectorAll(".cal-cell").forEach((c) => c.classList.toggle("selected", c === b));
+      renderCalendarDay(byDay[date] || []);
+    });
+    grid.appendChild(b);
+  }
+  renderCalendarDay(calSelected.startsWith(calMonth) ? byDay[calSelected] || [] : null);
+}
+
+function renderCalendarDay(list) {
+  const box = $("#cal-day");
+  if (list == null) {
+    box.innerHTML = "";
+    return;
+  }
+  box.innerHTML = `<div class="cal-day-head">${formatDate(calSelected)}</div>` +
+    (list.length
+      ? list.map((i) => `<div class="cal-day-item${i.done ? " done" : ""}">${i.done ? "✓ " : "• "}${esc(i.title)}</div>`).join("")
+      : '<div class="muted">Brak terminów.</div>') +
+    '<button type="button" class="btn btn-small btn-ghost" id="cal-add-here">+ Dodaj termin na ten dzień</button>';
+  $("#cal-add-here").addEventListener("click", () => {
+    evForm.date.value = calSelected;
+    evForm.title.focus();
+    evForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+$("#cal-prev").addEventListener("click", () => { calMonth = shiftMonth(calMonth, -1); loaders.kalendarz(); });
+$("#cal-next").addEventListener("click", () => { calMonth = shiftMonth(calMonth, 1); loaders.kalendarz(); });
+
+function renderEventPresets() {
+  const box = $("#event-presets");
+  box.innerHTML = "";
+  for (const [title, ico, repeat, category] of EVENT_PRESETS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = `${ico} ${title}`;
+    b.addEventListener("click", () => {
+      evForm.title.value = title;
+      evForm.repeat.value = repeat;
+      evForm.category.value = category;
+      evForm.date.focus();
+    });
+    box.appendChild(b);
+  }
+}
+renderEventPresets();
+
+evForm.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const rawAmount = evForm.amount.value.trim();
+  const amount = rawAmount ? parseAmount(rawAmount) : null;
+  if (rawAmount && !(amount > 0)) return toast("Podaj poprawną kwotę albo zostaw puste");
+  try {
+    await api("/events", json("POST", {
+      title: evForm.title.value,
+      date: evForm.date.value,
+      repeat: evForm.repeat.value,
+      remind_days: Number(evForm.remind_days.value),
+      amount,
+      category: evForm.category.value,
+      note: evForm.note.value,
+    }));
+  } catch (e) {
+    return toast("Błąd: " + e.message);
+  }
+  toast(`Dodano: ${evForm.title.value}`);
+  calMonth = evForm.date.value.slice(0, 7);
+  calSelected = evForm.date.value;
+  evForm.reset();
+  evForm.date.value = iso(new Date());
+  evForm.remind_days.value = "7";
+  loaders.kalendarz();
+});
+
+loaders.kalendarz = async () => {
+  $("#cal-month").textContent = monthLabel(calMonth);
+  const [items, events] = await Promise.all([
+    api("/events/calendar" + qs({ month: calMonth })),
+    api("/events"),
+  ]);
+  renderCalendarGrid(items);
+  const ul = $("#events-list");
+  ul.innerHTML = events.length ? "" : '<li class="empty">Brak terminów. Dodaj np. OC samochodu poniżej.</li>';
+  events.forEach((e) => ul.appendChild(eventItem(e)));
+  updateReminderBadge(events.filter((e) => e.state === "overdue" || e.state === "soon").length);
+  fillDatalists().catch(() => {});
+};
+
+/** Licznik przypomnień na zakładce i (jeśli telefon pozwala) na ikonie aplikacji. */
+function updateReminderBadge(count) {
+  const badge = $("#cal-badge");
+  badge.textContent = count;
+  badge.hidden = !count;
+  try {
+    if (count) navigator.setAppBadge?.(count);
+    else navigator.clearAppBadge?.();
+  } catch {}
+}
+
+async function renderEventsReminder() {
+  const list = await api("/events/reminders");
+  updateReminderBadge(list.length);
+  const el = $("#events-reminder");
+  if (!list.length) {
+    el.hidden = true;
+    return;
+  }
+  el.innerHTML = `
+    <div class="meta"><strong>📅 Przypomnienia</strong>
+      ${list.slice(0, 4).map((e) => `<div class="rem-item${e.state === "overdue" ? " overdue" : ""}">
+        ${esc(e.title)} – <b>${whenLabel(e)}</b> (${formatDate(e.next_date)})${e.amount ? " · " + money(e.amount) : ""}</div>`).join("")}
+      ${list.length > 4 ? `<div class="muted">i ${list.length - 4} więcej…</div>` : ""}
+    </div>
+    <button class="btn btn-small" type="button">Kalendarz ›</button>`;
+  el.querySelector("button").addEventListener("click", () => show("kalendarz"));
+  el.hidden = false;
+}
 
 // =====================================================================
 // HISTORIA (wydatki i przychody razem)
