@@ -1,6 +1,6 @@
 // Service worker: trzyma pliki aplikacji w pamięci podręcznej, żeby działała
 // z ikony także bez internetu. Zapytania do API (tryb serwera) idą zawsze do sieci.
-const CACHE = "wydatki-v6";
+const CACHE = "wydatki-v7";
 const SHELL = [
   "./",
   "index.html",

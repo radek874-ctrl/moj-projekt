@@ -582,6 +582,8 @@ function eventItem(e) {
     ${e.state === "done"
       ? '<button class="btn btn-small btn-ghost" data-act="undo">Przywróć</button>'
       : '<button class="btn btn-small" data-act="done">Zrobione</button>'}
+    ${e.state === "done" ? "" : `<a class="icon-btn" href="${googleCalendarUrl(e)}" target="_blank" rel="noopener"
+        aria-label="Dodaj do Kalendarza Google" title="Dodaj do Kalendarza Google">📆</a>`}
     <button class="icon-btn" data-act="edit" aria-label="Edytuj">✎</button>`;
 
   li.querySelector('[data-act="done"]')?.addEventListener("click", async () => {
@@ -740,8 +742,9 @@ evForm.addEventListener("submit", async (ev) => {
   const rawAmount = evForm.amount.value.trim();
   const amount = rawAmount ? parseAmount(rawAmount) : null;
   if (rawAmount && !(amount > 0)) return toast("Podaj poprawną kwotę albo zostaw puste");
+  let created;
   try {
-    await api("/events", json("POST", {
+    created = await api("/events", json("POST", {
       title: evForm.title.value,
       date: evForm.date.value,
       repeat: evForm.repeat.value,
@@ -754,11 +757,14 @@ evForm.addEventListener("submit", async (ev) => {
     return toast("Błąd: " + e.message);
   }
   toast(`Dodano: ${evForm.title.value}`);
+  const toGoogle = evForm.gcal.checked;
+  if (toGoogle) window.open(googleCalendarUrl(created), "_blank", "noopener");
   calMonth = evForm.date.value.slice(0, 7);
   calSelected = evForm.date.value;
   evForm.reset();
   evForm.date.value = iso(new Date());
   evForm.remind_days.value = "7";
+  evForm.gcal.checked = toGoogle;
   loaders.kalendarz();
 });
 
