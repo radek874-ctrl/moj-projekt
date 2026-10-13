@@ -150,7 +150,7 @@ def test_import_csv_missing_columns(client):
 
 def test_frontend(client):
     r = client.get("/")
-    assert r.status_code == 200 and "Moje Wydatki" in r.text
+    assert r.status_code == 200 and "Budżet domowy" in r.text
     assert 'APP_MODE = "server"' in client.get("/config.js").text
     assert client.get("/sw.js").headers["content-type"].startswith("text/javascript") or \
         client.get("/sw.js").headers["content-type"].startswith("application/javascript")
@@ -160,3 +160,120 @@ def test_frontend(client):
         assert client.get("/" + icon["src"]).status_code == 200
     # API nie jest przesłonięte przez pliki statyczne
     assert client.get("/health").json() == {"status": "ok"}
+
+
+# ---------- przychody, bilans, stałe opłaty ----------
+
+def add_income(client, amount, category, date, description=""):
+    r = client.post("/incomes", json={
+        "amount": amount, "category": category, "date": date, "description": description,
+    })
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_incomes_crud(client):
+    i = add_income(client, 6500, "Wynagrodzenie", "2026-10-10", "pensja")
+    assert i["category"] == "wynagrodzenie"
+    assert client.get(f"/incomes/{i['id']}").json()["amount"] == 6500.0
+    assert client.patch(f"/incomes/{i['id']}", json={"amount": 6600}).json()["amount"] == 6600.0
+    # przychody nie mieszają się z wydatkami
+    assert client.get("/expenses").json() == []
+    assert client.get(f"/expenses/{i['id']}").status_code == 404
+    assert client.delete(f"/incomes/{i['id']}").status_code == 204
+    assert client.get("/incomes").json() == []
+
+
+def test_balance(seeded):
+    add_income(seeded, 1000, "wynagrodzenie", "2026-09-10")
+    add_income(seeded, 200, "premia", "2026-10-10")
+    b = seeded.get("/analytics/balance").json()
+    assert b["income"] == 1200.0
+    assert b["expenses"] == 400.0
+    assert b["balance"] == 800.0
+    assert b["savings_rate"] == 66.67
+    assert b["months"] == [
+        {"month": "2026-09", "income": 1000.0, "expenses": 150.5, "balance": 849.5},
+        {"month": "2026-10", "income": 200.0, "expenses": 249.5, "balance": -49.5},
+    ]
+    oct_ = seeded.get("/analytics/balance", params={"date_from": "2026-10-01"}).json()
+    assert oct_["balance"] == -49.5
+
+
+def test_balance_without_income(seeded):
+    assert seeded.get("/analytics/balance").json()["savings_rate"] is None
+
+
+def test_analytics_kind_income(seeded):
+    add_income(seeded, 1000, "wynagrodzenie", "2026-09-10")
+    add_income(seeded, 300, "800+", "2026-09-12")
+    cats = seeded.get("/analytics/by-category", params={"kind": "income"}).json()
+    assert [(c["category"], c["total"]) for c in cats] == [("wynagrodzenie", 1000.0), ("800+", 300.0)]
+    assert seeded.get("/analytics/summary", params={"kind": "income"}).json()["total"] == 1300.0
+    # domyślnie wydatki
+    assert seeded.get("/analytics/summary").json()["total"] == 400.0
+    assert seeded.get("/analytics/summary", params={"kind": "xyz"}).status_code == 422
+
+
+def test_recurring_flow(client):
+    gas = client.post("/recurring", json={"name": "Gaz", "category": "Gaz", "amount": 120, "day": 15}).json()
+    pay = client.post("/recurring", json={"kind": "income", "name": "Pensja", "category": "wynagrodzenie",
+                                          "amount": 6000, "day": 10}).json()
+    assert gas["kind"] == "expense" and gas["category"] == "gaz"
+
+    status = client.get("/recurring", params={"month": "2026-10"}).json()
+    assert [(s["name"], s["paid"]) for s in status] == [("Gaz", False), ("Pensja", False)]
+
+    # rachunek wyższy niż zwykle
+    t = client.post(f"/recurring/{gas['id']}/pay", json={"month": "2026-10", "amount": 143.27})
+    assert t.status_code == 201
+    assert t.json() | {"id": 0} == {"id": 0, "amount": 143.27, "category": "gaz", "description": "Gaz",
+                                    "date": "2026-10-15", "recurring_id": gas["id"]}
+    assert client.post(f"/recurring/{gas['id']}/pay", json={"month": "2026-10"}).status_code == 409
+    # pensja z typową kwotą trafia do przychodów
+    assert client.post(f"/recurring/{pay['id']}/pay", json={"month": "2026-10"}).json()["amount"] == 6000.0
+    assert client.get("/incomes").json()[0]["recurring_id"] == pay["id"]
+
+    status = {s["name"]: s for s in client.get("/recurring", params={"month": "2026-10"}).json()}
+    assert status["Gaz"]["paid"] and status["Gaz"]["paid_amount"] == 143.27
+    assert client.get("/recurring", params={"month": "2026-11"}).json()[0]["paid"] is False
+
+    # cofnięcie = usunięcie operacji
+    client.delete(f"/expenses/{t.json()['id']}")
+    assert client.get("/recurring", params={"month": "2026-10"}).json()[0]["paid"] is False
+
+    # zmiana kwoty i usunięcie szablonu (zaksięgowane operacje zostają)
+    assert client.patch(f"/recurring/{gas['id']}", json={"amount": 130}).json()["amount"] == 130.0
+    assert client.delete(f"/recurring/{pay['id']}").status_code == 204
+    assert client.get("/incomes").json()[0]["recurring_id"] is None
+    assert client.get("/recurring", params={"month": "2026-13"}).status_code == 422
+    assert client.post("/recurring", json={"name": "X", "category": "x", "amount": 1, "day": 31}).status_code == 422
+
+
+def test_import_csv_with_type_column(client):
+    csv_data = (
+        "date;type;amount;category;description\n"
+        "2026-10-01;wydatek;100;prąd;\n"
+        "2026-10-10;przychód;5000;wynagrodzenie;pensja\n"
+        "2026-10-11;coś;1;x;\n"
+    ).encode()
+    r = client.post("/expenses/import", files={"file": ("w.csv", csv_data, "text/csv")}).json()
+    assert r["imported"] == 2 and len(r["errors"]) == 1
+    assert client.get("/analytics/balance").json()["balance"] == 4900.0
+
+
+def test_migrates_old_database(tmp_path, monkeypatch):
+    import sqlite3
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.executescript("""
+        CREATE TABLE expenses (id INTEGER PRIMARY KEY AUTOINCREMENT, amount_cents INTEGER NOT NULL,
+            category TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', date TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')));
+        INSERT INTO expenses (amount_cents, category, date) VALUES (1234, 'prąd', '2026-10-01');
+    """)
+    conn.close()
+    monkeypatch.setenv("EXPENSES_DB", str(path))
+    with TestClient(app) as c:
+        assert c.get("/expenses").json()[0]["amount"] == 12.34
+        assert c.get("/analytics/balance").json()["expenses"] == 12.34

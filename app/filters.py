@@ -5,14 +5,13 @@ from fastapi import Query
 
 
 @dataclass
-class ExpenseFilters:
-    """Wspólne filtry dla listy wydatków i endpointów analitycznych."""
+class DateFilters:
+    """Zakres dat wspólny dla list i analiz."""
 
     date_from: date | None = Query(default=None, description="Data początkowa (włącznie)")
     date_to: date | None = Query(default=None, description="Data końcowa (włącznie)")
-    category: str | None = Query(default=None, description="Kategoria")
 
-    def where(self) -> tuple[str, list]:
+    def clauses(self) -> tuple[list[str], list]:
         clauses, params = [], []
         if self.date_from:
             clauses.append("date >= ?")
@@ -20,8 +19,25 @@ class ExpenseFilters:
         if self.date_to:
             clauses.append("date <= ?")
             params.append(self.date_to.isoformat())
+        return clauses, params
+
+    def where(self) -> tuple[str, list]:
+        clauses, params = self.clauses()
+        return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
+
+
+@dataclass
+class TransactionFilters(DateFilters):
+    """Zakres dat + kategoria."""
+
+    category: str | None = Query(default=None, description="Kategoria")
+
+    def clauses(self) -> tuple[list[str], list]:
+        clauses, params = super().clauses()
         if self.category:
             clauses.append("category = ?")
             params.append(self.category.strip().lower())
-        sql = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-        return sql, params
+        return clauses, params
+
+
+ExpenseFilters = TransactionFilters  # zgodność wstecz

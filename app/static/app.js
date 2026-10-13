@@ -1,14 +1,28 @@
 "use strict";
 
-// ---------- narzędzia ----------
+// =====================================================================
+// Narzędzia
+// =====================================================================
 const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
 const fmt = new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" });
 const money = (v) => fmt.format(v || 0);
+const signed = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + money(Math.abs(v));
 const MONTHS = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
+const MONTHS_FULL = ["styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec", "lipiec",
+  "sierpień", "wrzesień", "październik", "listopad", "grudzień"];
 
 const pad = (n) => String(n).padStart(2, "0");
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const monthKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+const monthLabel = (key) => {
+  const [y, m] = key.split("-").map(Number);
+  return `${MONTHS_FULL[m - 1]} ${y}`;
+};
+const shiftMonth = (key, delta) => {
+  const [y, m] = key.split("-").map(Number);
+  return monthKey(new Date(y, m - 1 + delta, 1));
+};
 const parseAmount = (s) => Number(String(s).replace(/\s/g, "").replace(",", "."));
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -25,7 +39,36 @@ function toast(msg) {
   toast.t = setTimeout(() => (el.hidden = true), 2500);
 }
 
+// =====================================================================
+// Kategorie z ikonami (podpowiedzi; można wpisać dowolną inną)
+// =====================================================================
+const CATEGORIES = {
+  expense: [
+    ["jedzenie", "🛒"], ["prąd", "⚡"], ["gaz", "🔥"], ["woda", "💧"], ["ogrzewanie", "♨️"],
+    ["czynsz", "🏠"], ["kredyt", "🏦"], ["internet", "🌐"], ["telefon", "📱"], ["paliwo", "⛽"],
+    ["transport", "🚌"], ["ubezpieczenie", "🛡️"], ["zdrowie", "💊"], ["dzieci", "🧸"],
+    ["ubrania", "👕"], ["rozrywka", "🎬"], ["inne", "📦"],
+  ],
+  income: [
+    ["wynagrodzenie", "💼"], ["premia", "🎁"], ["800+", "👶"], ["emerytura", "🧓"],
+    ["zwrot podatku", "🧾"], ["sprzedaż", "🏷️"], ["odsetki", "📈"], ["inne", "💰"],
+  ],
+};
+// Gotowe szablony stałych pozycji: [nazwa, kategoria, dzień]
+const RECURRING_PRESETS = {
+  expense: [["Prąd", "prąd", 15], ["Gaz", "gaz", 15], ["Woda", "woda", 15], ["Czynsz", "czynsz", 10],
+    ["Kredyt", "kredyt", 5], ["Internet", "internet", 20], ["Telefon", "telefon", 20],
+    ["Ubezpieczenie", "ubezpieczenie", 1]],
+  income: [["Wynagrodzenie", "wynagrodzenie", 10], ["800+", "800+", 20], ["Emerytura", "emerytura", 1]],
+};
+const ICONS = Object.fromEntries([...CATEGORIES.expense, ...CATEGORIES.income]);
+const icon = (cat) => ICONS[cat] || "•";
+
+// =====================================================================
+// Komunikacja z API (serwer FastAPI albo LocalApi w przeglądarce)
+// =====================================================================
 const LOCAL = window.APP_MODE === "local";
+const PATH = { expense: "/expenses", income: "/incomes" };
 
 async function api(path, options = {}) {
   if (LOCAL) return LocalApi.request(path, options);
@@ -48,31 +91,47 @@ async function api(path, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+const json = (method, body) => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
 const qs = (params) =>
   "?" + new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== "")).toString();
 
-// ---------- nawigacja ----------
+// =====================================================================
+// Nawigacja
+// =====================================================================
 const loaders = {};
 
 function show(view) {
-  document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== `view-${view}`));
-  document.querySelectorAll(".tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+  $$(".view").forEach((v) => (v.hidden = v.id !== `view-${view}`));
+  $$(".tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   loaders[view]?.()?.catch?.((e) => {
     if ($("#offline").hidden) toast("Błąd: " + e.message);
   });
   window.scrollTo(0, 0);
 }
+$$(".tabbar button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
 
-document.querySelectorAll(".tabbar button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
+function setActive(buttons, active) {
+  buttons.forEach((b) => {
+    b.classList.toggle("active", b === active);
+    if (b.hasAttribute("aria-checked")) b.setAttribute("aria-checked", b === active);
+  });
+}
 
-// ---------- tooltip ----------
+// =====================================================================
+// Tooltip i okno dialogowe
+// =====================================================================
 const tip = $("#tooltip");
 function attachTip(el, text) {
   const open = () => {
     const r = el.getBoundingClientRect();
     tip.textContent = text;
     tip.hidden = false;
-    const x = Math.min(Math.max(r.left + r.width / 2, 80), window.innerWidth - 80);
+    const x = Math.min(Math.max(r.left + r.width / 2, 100), window.innerWidth - 100);
     tip.style.left = `${x}px`;
     tip.style.top = `${r.top}px`;
   };
@@ -82,33 +141,49 @@ function attachTip(el, text) {
 }
 document.addEventListener("scroll", () => (tip.hidden = true), { passive: true });
 
-// ---------- analiza ----------
+/** Pokazuje okno z formularzem. Zwraca FormData po „OK” albo null po „Anuluj”. */
+function openDialog(title, bodyHtml, okLabel = "OK") {
+  const dialog = $("#dialog");
+  $("#dialog-title").textContent = title;
+  $("#dialog-body").innerHTML = bodyHtml;
+  $("#dialog-ok").textContent = okLabel;
+  dialog.showModal();
+  dialog.querySelector("input")?.focus();
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => {
+      resolve(dialog.returnValue === "ok" ? new FormData($("#dialog-form")) : null);
+    }, { once: true });
+  });
+}
+
+// =====================================================================
+// PULPIT
+// =====================================================================
 let period = "month";
 
 function periodRange(p) {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
   switch (p) {
-    case "month": return { date_from: iso(new Date(y, m, 1)), date_to: iso(now) };
+    case "month": return { date_from: iso(new Date(y, m, 1)), date_to: iso(new Date(y, m + 1, 0)) };
     case "prev": return { date_from: iso(new Date(y, m - 1, 1)), date_to: iso(new Date(y, m, 0)) };
-    case "3m": return { date_from: iso(new Date(y, m - 2, 1)), date_to: iso(now) };
-    case "year": return { date_from: iso(new Date(y, 0, 1)), date_to: iso(now) };
+    case "3m": return { date_from: iso(new Date(y, m - 2, 1)), date_to: iso(new Date(y, m + 1, 0)) };
+    case "year": return { date_from: iso(new Date(y, 0, 1)), date_to: iso(new Date(y, 11, 31)) };
     default: return {};
   }
 }
 
-document.querySelectorAll(".periods button").forEach((b) =>
+$$("#view-pulpit .periods button").forEach((b) =>
   b.addEventListener("click", () => {
     period = b.dataset.period;
-    document.querySelectorAll(".periods button").forEach((x) => x.classList.toggle("active", x === b));
-    loaders.analiza();
+    setActive($$("#view-pulpit .periods button"), b);
+    loaders.pulpit();
   })
 );
 
-function renderCategories(stats) {
-  const box = $("#chart-categories");
+function renderCategoryBars(box, stats, kind) {
   if (!stats.length) {
-    box.innerHTML = '<div class="empty">Brak wydatków w tym okresie.</div>';
+    box.innerHTML = `<div class="empty">Brak ${kind === "income" ? "przychodów" : "wydatków"} w tym okresie.</div>`;
     return;
   }
   const max = stats[0].total;
@@ -117,137 +192,173 @@ function renderCategories(stats) {
     const row = document.createElement("div");
     row.className = "hbar";
     row.innerHTML = `
-      <span class="hbar-label">${esc(s.category)}</span>
-      <span class="hbar-value">${money(s.total)} · ${s.share_percent.toLocaleString("pl-PL")}%</span>
-      <div class="hbar-track"><div class="hbar-fill" style="width:${(100 * s.total) / max}%"></div></div>`;
+      <span class="hbar-label">${icon(s.category)} ${esc(s.category)}</span>
+      <span class="hbar-value">${money(s.total)} · ${Math.round(s.share_percent)}%</span>
+      <div class="hbar-track"><div class="hbar-fill fill-${kind}" style="width:${(100 * s.total) / max}%"></div></div>`;
     attachTip(row, `${s.category}: ${s.count} × śr. ${money(s.average)}`);
     box.appendChild(row);
   }
 }
 
-function renderMonthly(rows) {
-  // Zawsze ostatnie 12 miesięcy, także te bez wydatków.
+function renderMonthly(balanceMonths) {
+  // Zawsze ostatnie 12 miesięcy, także te puste.
   const now = new Date();
-  const byMonth = Object.fromEntries(rows.map((r) => [r.month, r]));
+  const byMonth = Object.fromEntries(balanceMonths.map((m) => [m.month, m]));
   const months = [];
   for (let i = 11; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const key = monthKey(d);
-    months.push({ key, label: MONTHS[d.getMonth()], ...(byMonth[key] || { total: 0, count: 0 }) });
+    months.push({ key, label: MONTHS[d.getMonth()], ...(byMonth[key] || { income: 0, expenses: 0, balance: 0 }) });
   }
-  const max = Math.max(...months.map((m) => m.total), 1);
+  const max = Math.max(...months.flatMap((m) => [m.income, m.expenses]), 1);
   const box = $("#chart-monthly");
   box.innerHTML = "";
   const axis = document.createElement("div");
   axis.className = "col-axis";
-  months.forEach((m, i) => {
+  for (const m of months) {
     const col = document.createElement("div");
-    col.className = "col" + (i === months.length - 1 ? " current" : "");
-    col.innerHTML = `<div class="col-fill" style="height:${(100 * m.total) / max}%"></div>`;
-    const change = m.change_percent != null ? ` (${m.change_percent > 0 ? "+" : ""}${m.change_percent}%)` : "";
-    attachTip(col, `${m.label} ${m.key.slice(0, 4)}: ${money(m.total)}${change}`);
+    col.className = "col";
+    col.innerHTML = `
+      <div class="col-fill fill-income" style="height:${(100 * m.income) / max}%"></div>
+      <div class="col-fill fill-expense" style="height:${(100 * m.expenses) / max}%"></div>`;
+    attachTip(col, `${monthLabel(m.key)}: +${money(m.income)} / −${money(m.expenses)} = ${signed(m.balance)}`);
     box.appendChild(col);
     axis.insertAdjacentHTML("beforeend", `<span>${m.label}</span>`);
-  });
-  box.nextElementSibling?.classList.contains("col-axis") && box.nextElementSibling.remove();
+  }
+  if (box.nextElementSibling?.classList.contains("col-axis")) box.nextElementSibling.remove();
   box.after(axis);
 }
 
-function expenseItem(e, withDelete) {
-  const li = document.createElement("li");
-  li.innerHTML = `
-    <div class="meta">
-      <div class="title">${esc(e.description || e.category)}</div>
-      <div class="sub">${e.description ? esc(e.category) + " · " : ""}${formatDate(e.date)}</div>
-    </div>
-    <span class="amount">${money(e.amount)}</span>
-    ${withDelete ? '<button class="del" aria-label="Usuń">✕</button>' : ""}`;
-  if (withDelete) {
-    li.querySelector(".del").addEventListener("click", async () => {
-      if (!confirm(`Usunąć wydatek ${money(e.amount)} (${e.category})?`)) return;
-      await api(`/expenses/${e.id}`, { method: "DELETE" });
-      li.remove();
-      toast("Usunięto");
-    });
+async function renderBillsReminder() {
+  const items = await api("/recurring" + qs({ month: monthKey(new Date()) }));
+  const unpaid = items.filter((r) => r.kind === "expense" && !r.paid);
+  const el = $("#bills-reminder");
+  if (!unpaid.length) {
+    el.hidden = true;
+    return;
   }
-  return li;
+  const sum = unpaid.reduce((s, r) => s + r.amount, 0);
+  el.innerHTML = `
+    <div><strong>🧾 Do zapłaty w tym miesiącu: ${money(sum)}</strong>
+      <div class="muted">${unpaid.map((r) => esc(r.name)).join(", ")}</div></div>
+    <button class="btn btn-small" type="button">Opłaty ›</button>`;
+  el.querySelector("button").addEventListener("click", () => show("oplaty"));
+  el.hidden = false;
 }
 
-loaders.analiza = async () => {
+loaders.pulpit = async () => {
   const range = periodRange(period);
   const now = new Date();
   const yearAgo = iso(new Date(now.getFullYear(), now.getMonth() - 11, 1));
-  const [summary, cats, monthly, top] = await Promise.all([
-    api("/analytics/summary" + qs(range)),
-    api("/analytics/by-category" + qs(range)),
-    api("/analytics/monthly" + qs({ date_from: yearAgo })),
-    api("/analytics/top" + qs({ ...range, limit: 5 })),
+  const [bal, expCats, incCats, last12] = await Promise.all([
+    api("/analytics/balance" + qs(range)),
+    api("/analytics/by-category" + qs({ ...range, kind: "expense" })),
+    api("/analytics/by-category" + qs({ ...range, kind: "income" })),
+    api("/analytics/balance" + qs({ date_from: yearAgo })),
   ]);
-  $("#sum-total").textContent = money(summary.total);
-  $("#sum-daily").textContent = money(summary.daily_average);
-  $("#sum-count").textContent = summary.count;
-  renderCategories(cats);
-  renderMonthly(monthly);
-  const list = $("#top-list");
-  list.innerHTML = top.length ? "" : '<li class="empty">Brak wydatków.</li>';
-  top.forEach((e) => list.appendChild(expenseItem(e, false)));
+  $("#bal-balance").textContent = signed(bal.balance);
+  $("#bal-income").textContent = money(bal.income);
+  $("#bal-expenses").textContent = money(bal.expenses);
+  $("#bal-note").textContent =
+    bal.savings_rate == null ? "Dodaj przychody, żeby zobaczyć, ile zostaje."
+      : bal.balance >= 0 ? `✅ Zostaje ${Math.round(bal.savings_rate)}% przychodów`
+        : `⚠️ Wydatki większe od przychodów o ${money(-bal.balance)}`;
+
+  renderCategoryBars($("#chart-expense-categories"), expCats, "expense");
+  $("#income-categories-card").hidden = !incCats.length;
+  renderCategoryBars($("#chart-income-categories"), incCats, "income");
+  renderMonthly(last12.months);
+  await renderBillsReminder();
 };
 
-// ---------- kategorie (podpowiedzi) ----------
-async function loadCategories() {
-  const cats = await api("/analytics/by-category");
-  $("#categories").innerHTML = cats.map((c) => `<option value="${esc(c.category)}">`).join("");
-  const chips = $("#category-chips");
-  chips.innerHTML = "";
-  cats.slice(0, 6).forEach((c) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = c.category;
-    b.addEventListener("click", () => ($("#expense-form").category.value = c.category));
-    chips.appendChild(b);
-  });
+// =====================================================================
+// Podpowiedzi kategorii (stałe + używane wcześniej)
+// =====================================================================
+async function knownCategories(kind) {
+  const used = (await api("/analytics/by-category" + qs({ kind }))).map((c) => c.category);
+  const presets = CATEGORIES[kind].map(([c]) => c);
+  return [...new Set([...presets, ...used])];
 }
 
-// ---------- dodawanie ----------
-const form = $("#expense-form");
-form.date.value = iso(new Date());
+async function fillDatalists() {
+  const [exp, inc] = await Promise.all([knownCategories("expense"), knownCategories("income")]);
+  const opts = (list) => list.map((c) => `<option value="${esc(c)}">`).join("");
+  $("#expense-categories").innerHTML = opts(exp);
+  $("#all-categories").innerHTML = opts([...new Set([...exp, ...inc])]);
+}
 
-loaders.dodaj = () => {
-  loadCategories().catch(() => {});
-  form.amount.focus();
+// =====================================================================
+// DODAJ (wydatek albo przychód)
+// =====================================================================
+const txForm = $("#tx-form");
+let txKind = "expense";
+txForm.date.value = iso(new Date());
+
+async function renderCategoryGrid() {
+  const grid = $("#category-grid");
+  const cats = await knownCategories(txKind);
+  grid.innerHTML = "";
+  for (const c of cats) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "cat" + (txForm.category.value.trim().toLowerCase() === c ? " active" : "");
+    b.innerHTML = `<span class="cat-ico">${icon(c)}</span><span class="cat-name">${esc(c)}</span>`;
+    b.addEventListener("click", () => {
+      txForm.category.value = c;
+      grid.querySelectorAll(".cat").forEach((x) => x.classList.toggle("active", x === b));
+    });
+    grid.appendChild(b);
+  }
+}
+
+txForm.category.addEventListener("input", () => {
+  const v = txForm.category.value.trim().toLowerCase();
+  $$("#category-grid .cat").forEach((b) => b.classList.toggle("active", b.querySelector(".cat-name").textContent === v));
+});
+
+$$("#tx-form .segmented button").forEach((b) =>
+  b.addEventListener("click", () => {
+    txKind = b.dataset.kind;
+    setActive($$("#tx-form .segmented button"), b);
+    txForm.classList.toggle("is-income", txKind === "income");
+    $("#tx-submit").textContent = txKind === "income" ? "Zapisz przychód" : "Zapisz wydatek";
+    txForm.category.value = "";
+    renderCategoryGrid().catch(() => {});
+  })
+);
+
+loaders.dodaj = async () => {
+  await renderCategoryGrid();
+  txForm.amount.focus();
 };
 
-form.addEventListener("submit", async (ev) => {
+txForm.addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const amount = parseAmount(form.amount.value);
+  const amount = parseAmount(txForm.amount.value);
   if (!(amount > 0)) return toast("Podaj poprawną kwotę");
   try {
-    await api("/expenses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount,
-        category: form.category.value,
-        description: form.description.value,
-        date: form.date.value,
-      }),
-    });
+    await api(PATH[txKind], json("POST", {
+      amount,
+      category: txForm.category.value,
+      description: txForm.description.value,
+      date: txForm.date.value,
+    }));
   } catch (e) {
     return toast("Błąd: " + e.message);
   }
-  toast(`Zapisano ${money(amount)}`);
-  form.amount.value = "";
-  form.description.value = "";
-  form.amount.focus();
-  loadCategories().catch(() => {});
+  toast(`${txKind === "income" ? "Przychód" : "Wydatek"} zapisany: ${money(amount)}`);
+  txForm.amount.value = "";
+  txForm.description.value = "";
+  txForm.category.value = "";
+  renderCategoryGrid().catch(() => {});
+  txForm.amount.focus();
 });
 
 const importForm = $("#import-form");
 importForm.addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const data = new FormData(importForm);
   try {
-    const r = await api("/expenses/import", { method: "POST", body: data });
+    const r = await api("/expenses/import", { method: "POST", body: new FormData(importForm) });
     $("#import-result").innerHTML =
       `Zaimportowano: ${r.imported}` + (r.errors.length ? `<br>Błędy:<br>${r.errors.map(esc).join("<br>")}` : "");
     importForm.reset();
@@ -256,35 +367,223 @@ importForm.addEventListener("submit", async (ev) => {
   }
 });
 
-// ---------- lista ----------
-const PAGE = 50;
-let listOffset = 0;
+// =====================================================================
+// STAŁE OPŁATY
+// =====================================================================
+let billsMonth = monthKey(new Date());
+let recurringKind = "expense";
+const recForm = $("#recurring-form");
 
-async function loadList(reset) {
-  if (reset) {
-    listOffset = 0;
-    $("#expense-list").innerHTML = "";
-  }
-  const items = await api("/expenses" + qs({ limit: PAGE, offset: listOffset }));
-  const ul = $("#expense-list");
-  if (reset && !items.length) ul.innerHTML = '<li class="empty">Nie masz jeszcze żadnych wydatków.</li>';
-  items.forEach((e) => ul.appendChild(expenseItem(e, true)));
-  listOffset += items.length;
-  $("#load-more").hidden = items.length < PAGE;
+$("#bills-prev").addEventListener("click", () => { billsMonth = shiftMonth(billsMonth, -1); loaders.oplaty(); });
+$("#bills-next").addEventListener("click", () => { billsMonth = shiftMonth(billsMonth, 1); loaders.oplaty(); });
+
+function billItem(r) {
+  const li = document.createElement("li");
+  const doneLabel = r.kind === "income" ? "wpłynęło" : "zapłacono";
+  li.className = r.paid ? "paid" : "";
+  li.innerHTML = `
+    <span class="bill-ico">${icon(r.category)}</span>
+    <div class="meta">
+      <div class="title">${esc(r.name)}</div>
+      <div class="sub">${r.paid ? `✓ ${doneLabel} ${money(r.paid_amount)}` : `${money(r.amount)} · do ${r.day}.`}</div>
+    </div>
+    ${r.paid
+      ? '<button class="btn btn-small btn-ghost" data-act="undo">Cofnij</button>'
+      : `<button class="btn btn-small" data-act="pay">${r.kind === "income" ? "Wpłynęło" : "Zapłać"}</button>`}
+    <button class="icon-btn" data-act="edit" aria-label="Edytuj">✎</button>`;
+
+  li.querySelector('[data-act="pay"]')?.addEventListener("click", async () => {
+    const data = await openDialog(
+      `${r.name} – ${monthLabel(billsMonth)}`,
+      `<label>Kwota (zł)
+         <input name="amount" type="text" inputmode="decimal" value="${String(r.amount).replace(".", ",")}" required>
+       </label>
+       <p class="muted">Zmień kwotę, jeśli rachunek jest inny niż zwykle.</p>`,
+      r.kind === "income" ? "Zapisz wpływ" : "Zapłacone"
+    );
+    if (!data) return;
+    const amount = parseAmount(data.get("amount"));
+    if (!(amount > 0)) return toast("Podaj poprawną kwotę");
+    try {
+      await api(`/recurring/${r.id}/pay`, json("POST", { month: billsMonth, amount }));
+      toast(`${r.name}: ${doneLabel} ${money(amount)}`);
+    } catch (e) {
+      toast("Błąd: " + e.message);
+    }
+    loaders.oplaty();
+  });
+
+  li.querySelector('[data-act="undo"]')?.addEventListener("click", async () => {
+    if (!confirm(`Cofnąć „${r.name}” za ${monthLabel(billsMonth)}? Usunie to zapisaną operację.`)) return;
+    await api(`${PATH[r.kind]}/${r.transaction_id}`, { method: "DELETE" });
+    loaders.oplaty();
+  });
+
+  li.querySelector('[data-act="edit"]').addEventListener("click", async () => {
+    const data = await openDialog(
+      "Edytuj stałą pozycję",
+      `<label>Nazwa <input name="name" value="${esc(r.name)}" maxlength="100" required></label>
+       <label>Typowa kwota (zł)
+         <input name="amount" type="text" inputmode="decimal" value="${String(r.amount).replace(".", ",")}" required></label>
+       <label>Dzień płatności <input name="day" type="number" min="1" max="28" value="${r.day}" required></label>
+       <label class="check"><input type="checkbox" name="delete"> Usuń tę pozycję
+         <span class="muted">(zapisane płatności zostaną w historii)</span></label>`,
+      "Zapisz"
+    );
+    if (!data) return;
+    try {
+      if (data.get("delete")) {
+        await api(`/recurring/${r.id}`, { method: "DELETE" });
+        toast("Usunięto");
+      } else {
+        await api(`/recurring/${r.id}`, json("PATCH", {
+          name: data.get("name"), amount: parseAmount(data.get("amount")), day: Number(data.get("day")),
+        }));
+        toast("Zapisano");
+      }
+    } catch (e) {
+      toast("Błąd: " + e.message);
+    }
+    loaders.oplaty();
+  });
+  return li;
 }
-loaders.lista = () => loadList(true);
-$("#load-more").addEventListener("click", () => loadList(false));
 
-// ---------- budżety ----------
+loaders.oplaty = async () => {
+  $("#bills-month").textContent = monthLabel(billsMonth);
+  const items = await api("/recurring" + qs({ month: billsMonth }));
+  const expenses = items.filter((r) => r.kind === "expense");
+  const incomes = items.filter((r) => r.kind === "income");
+
+  const unpaid = expenses.filter((r) => !r.paid);
+  const paidCount = expenses.length - unpaid.length;
+  $("#bills-summary").textContent = expenses.length
+    ? `Zapłacono ${paidCount} z ${expenses.length}` +
+      (unpaid.length ? ` · zostało ${money(unpaid.reduce((s, r) => s + r.amount, 0))}` : " · wszystko opłacone ✓")
+    : "";
+
+  const expList = $("#bills-expense");
+  expList.innerHTML = expenses.length ? "" : '<li class="empty">Brak stałych opłat. Dodaj je poniżej – np. prąd, gaz, kredyt.</li>';
+  expenses.forEach((r) => expList.appendChild(billItem(r)));
+
+  $("#bills-income-card").hidden = !incomes.length;
+  const incList = $("#bills-income");
+  incList.innerHTML = "";
+  incomes.forEach((r) => incList.appendChild(billItem(r)));
+
+  renderRecurringPresets();
+  fillDatalists().catch(() => {});
+};
+
+function renderRecurringPresets() {
+  const box = $("#recurring-presets");
+  box.innerHTML = "";
+  for (const [name, category, day] of RECURRING_PRESETS[recurringKind]) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = `${icon(category)} ${name}`;
+    b.addEventListener("click", () => {
+      recForm.name.value = name;
+      recForm.category.value = category;
+      recForm.day.value = day;
+      recForm.amount.focus();
+    });
+    box.appendChild(b);
+  }
+}
+
+$$("#recurring-form .segmented button").forEach((b) =>
+  b.addEventListener("click", () => {
+    recurringKind = b.dataset.kind;
+    setActive($$("#recurring-form .segmented button"), b);
+    renderRecurringPresets();
+  })
+);
+
+recForm.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const amount = parseAmount(recForm.amount.value);
+  if (!(amount > 0)) return toast("Podaj poprawną kwotę");
+  try {
+    await api("/recurring", json("POST", {
+      kind: recurringKind,
+      name: recForm.name.value,
+      category: recForm.category.value,
+      amount,
+      day: Number(recForm.day.value),
+    }));
+  } catch (e) {
+    return toast("Błąd: " + e.message);
+  }
+  toast(`Dodano: ${recForm.name.value}`);
+  recForm.reset();
+  recForm.day.value = 10;
+  loaders.oplaty();
+});
+
+// =====================================================================
+// HISTORIA (wydatki i przychody razem)
+// =====================================================================
+const PAGE = 50;
+let historyFilter = "all";
+let historyShown = PAGE;
+
+$$("#view-historia .periods button").forEach((b) =>
+  b.addEventListener("click", () => {
+    historyFilter = b.dataset.filter;
+    setActive($$("#view-historia .periods button"), b);
+    historyShown = PAGE;
+    loaders.historia();
+  })
+);
+
+function historyItem(t) {
+  const li = document.createElement("li");
+  li.innerHTML = `
+    <span class="bill-ico">${icon(t.category)}</span>
+    <div class="meta">
+      <div class="title">${esc(t.description || t.category)}</div>
+      <div class="sub">${t.description ? esc(t.category) + " · " : ""}${formatDate(t.date)}</div>
+    </div>
+    <span class="amount ${t.kind}">${t.kind === "income" ? "+" : "−"}${money(t.amount)}</span>
+    <button class="del" aria-label="Usuń">✕</button>`;
+  li.querySelector(".del").addEventListener("click", async () => {
+    const what = t.kind === "income" ? "przychód" : "wydatek";
+    if (!confirm(`Usunąć ${what} ${money(t.amount)} (${t.category})?`)) return;
+    await api(`${PATH[t.kind]}/${t.id}`, { method: "DELETE" });
+    li.remove();
+    toast("Usunięto");
+  });
+  return li;
+}
+
+loaders.historia = async () => {
+  const kinds = historyFilter === "all" ? ["expense", "income"] : [historyFilter];
+  // Pobieramy o jeden więcej, żeby wiedzieć, czy jest następna strona.
+  const lists = await Promise.all(kinds.map((k) =>
+    api(PATH[k] + qs({ limit: Math.min(historyShown + 1, 1000) })).then((l) => l.map((t) => ({ ...t, kind: k })))));
+  const all = lists.flat().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.id - a.id));
+  const ul = $("#history-list");
+  ul.innerHTML = all.length ? "" : '<li class="empty">Nic tu jeszcze nie ma.</li>';
+  all.slice(0, historyShown).forEach((t) => ul.appendChild(historyItem(t)));
+  $("#load-more").hidden = all.length <= historyShown;
+};
+$("#load-more").addEventListener("click", () => {
+  historyShown += PAGE;
+  loaders.historia();
+});
+
+// =====================================================================
+// LIMITY (budżety)
+// =====================================================================
 loaders.budzety = async () => {
   const month = monthKey(new Date());
-  const [y, m] = month.split("-").map(Number);
-  $("#budget-month").textContent = `${MONTHS[m - 1]} ${y}`;
-  loadCategories().catch(() => {});
+  $("#budget-month").textContent = monthLabel(month);
+  fillDatalists().catch(() => {});
   const list = await api("/budgets/status" + qs({ month }));
   const box = $("#budget-list");
   if (!list.length) {
-    box.innerHTML = '<div class="empty">Brak budżetów. Ustaw limit poniżej.</div>';
+    box.innerHTML = '<div class="empty">Brak limitów. Ustaw np. limit na jedzenie poniżej.</div>';
     return;
   }
   box.innerHTML = "";
@@ -294,13 +593,13 @@ loaders.budzety = async () => {
     const div = document.createElement("div");
     div.className = `budget ${state}`;
     div.innerHTML = `
-      <div class="budget-head"><span class="name">${esc(b.category)}</span>
+      <div class="budget-head"><span class="name">${icon(b.category)} ${esc(b.category)}</span>
         <span>${money(b.spent)} / ${money(b.monthly_limit)}</span></div>
       <div class="budget-bar"><div style="width:${Math.min(b.used_percent, 100)}%"></div></div>
       <div class="budget-foot"><span>${label} · ${Math.round(b.used_percent)}%</span>
         <button type="button">Usuń</button></div>`;
     div.querySelector("button").addEventListener("click", async () => {
-      if (!confirm(`Usunąć budżet „${b.category}”?`)) return;
+      if (!confirm(`Usunąć limit „${b.category}”?`)) return;
       await api(`/budgets/${encodeURIComponent(b.category)}`, { method: "DELETE" });
       loaders.budzety();
     });
@@ -314,11 +613,7 @@ $("#budget-form").addEventListener("submit", async (ev) => {
   const limit = parseAmount(f.limit.value);
   if (!(limit > 0)) return toast("Podaj poprawny limit");
   try {
-    await api(`/budgets/${encodeURIComponent(f.category.value.trim())}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ monthly_limit: limit }),
-    });
+    await api(`/budgets/${encodeURIComponent(f.category.value.trim())}`, json("PUT", { monthly_limit: limit }));
   } catch (e) {
     return toast("Błąd: " + e.message);
   }
@@ -327,7 +622,9 @@ $("#budget-form").addEventListener("submit", async (ev) => {
   loaders.budzety();
 });
 
-// ---------- kopia zapasowa ----------
+// =====================================================================
+// Eksport i kopia zapasowa
+// =====================================================================
 function download(name, text, type) {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const a = Object.assign(document.createElement("a"), { href: url, download: name });
@@ -339,24 +636,31 @@ function download(name, text, type) {
 
 const csvField = (v) => (/[;"\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
 
-$("#export-csv").addEventListener("click", async () => {
+async function fetchAll(path) {
   const all = [];
   for (let offset = 0; ; offset += 1000) {
-    const page = await api("/expenses" + qs({ limit: 1000, offset }));
+    const page = await api(path + qs({ limit: 1000, offset }));
     all.push(...page);
     if (page.length < 1000) break;
   }
-  const lines = ["date;amount;category;description"].concat(
-    all.reverse().map((e) => [e.date, e.amount.toFixed(2), e.category, e.description].map(csvField).join(";"))
+  return all;
+}
+
+$("#export-csv").addEventListener("click", async () => {
+  const [exp, inc] = await Promise.all([fetchAll("/expenses"), fetchAll("/incomes")]);
+  const rows = [...exp.map((t) => ({ ...t, type: "wydatek" })), ...inc.map((t) => ({ ...t, type: "przychód" }))]
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const lines = ["date;type;amount;category;description"].concat(
+    rows.map((t) => [t.date, t.type, t.amount.toFixed(2), t.category, t.description].map(csvField).join(";"))
   );
-  download(`wydatki-${iso(new Date())}.csv`, "\uFEFF" + lines.join("\n") + "\n", "text/csv");
-  toast(`Wyeksportowano ${all.length} wydatków`);
+  download(`budzet-${iso(new Date())}.csv`, "﻿" + lines.join("\n") + "\n", "text/csv");
+  toast(`Wyeksportowano ${rows.length} pozycji`);
 });
 
 if (LOCAL) {
-  document.querySelectorAll(".local-only").forEach((el) => (el.hidden = false));
+  $$(".local-only").forEach((el) => (el.hidden = false));
   $("#backup-save").addEventListener("click", () =>
-    download(`wydatki-kopia-${iso(new Date())}.json`, LocalApi.exportJson(), "application/json")
+    download(`budzet-kopia-${iso(new Date())}.json`, LocalApi.exportJson(), "application/json")
   );
   $("#backup-load").addEventListener("change", async (ev) => {
     const file = ev.target.files[0];
@@ -373,7 +677,9 @@ if (LOCAL) {
   navigator.storage?.persist?.();
 }
 
-// ---------- instalacja (PWA) ----------
+// =====================================================================
+// Instalacja (PWA)
+// =====================================================================
 let installEvent = null;
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
@@ -392,5 +698,4 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
-// start
-show("analiza");
+show("pulpit");

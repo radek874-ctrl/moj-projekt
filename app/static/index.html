@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#1a1a19">
   <meta name="color-scheme" content="dark">
-  <title>Moje Wydatki</title>
+  <title>Budżet domowy</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -13,7 +13,7 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>Moje Wydatki</h1>
+    <h1>Budżet domowy</h1>
     <button id="install-btn" class="btn btn-small" hidden>Zainstaluj</button>
   </header>
 
@@ -22,10 +22,10 @@
   </div>
 
   <main>
-    <!-- ANALIZA -->
-    <section id="view-analiza" class="view">
-      <div class="periods" role="tablist" aria-label="Okres">
-        <button data-period="month" class="chip active">Ten miesiąc</button>
+    <!-- PULPIT -->
+    <section id="view-pulpit" class="view">
+      <div class="periods" aria-label="Okres">
+        <button data-period="month" class="active">Ten miesiąc</button>
         <button data-period="prev">Poprzedni</button>
         <button data-period="3m">3 miesiące</button>
         <button data-period="year">Ten rok</button>
@@ -34,59 +34,70 @@
 
       <div class="tiles">
         <div class="tile tile-hero">
-          <span class="tile-label">Wydano</span>
-          <span class="tile-value" id="sum-total">–</span>
+          <span class="tile-label">Bilans (przychody − wydatki)</span>
+          <span class="tile-value" id="bal-balance">–</span>
+          <span class="tile-note" id="bal-note"></span>
         </div>
         <div class="tile">
-          <span class="tile-label">Średnio dziennie</span>
-          <span class="tile-value" id="sum-daily">–</span>
+          <span class="tile-label"><i class="dot dot-income"></i>Przychody</span>
+          <span class="tile-value" id="bal-income">–</span>
         </div>
         <div class="tile">
-          <span class="tile-label">Liczba wydatków</span>
-          <span class="tile-value" id="sum-count">–</span>
+          <span class="tile-label"><i class="dot dot-expense"></i>Wydatki</span>
+          <span class="tile-value" id="bal-expenses">–</span>
         </div>
       </div>
 
-      <div class="card">
-        <h2>Według kategorii</h2>
-        <div id="chart-categories" class="hbars"></div>
-      </div>
+      <div id="bills-reminder" class="card reminder" hidden></div>
 
       <div class="card">
-        <h2>Miesiące</h2>
+        <h2>Przychody i wydatki – 12 miesięcy</h2>
+        <div class="legend">
+          <span><i class="dot dot-income"></i>Przychody</span>
+          <span><i class="dot dot-expense"></i>Wydatki</span>
+        </div>
         <div id="chart-monthly" class="cols"></div>
       </div>
 
       <div class="card">
-        <h2>Największe wydatki</h2>
-        <ul id="top-list" class="list"></ul>
+        <h2>Na co idą pieniądze</h2>
+        <div id="chart-expense-categories" class="hbars"></div>
+      </div>
+
+      <div class="card" id="income-categories-card" hidden>
+        <h2>Skąd przychodzą pieniądze</h2>
+        <div id="chart-income-categories" class="hbars"></div>
       </div>
     </section>
 
     <!-- DODAJ -->
     <section id="view-dodaj" class="view" hidden>
-      <form id="expense-form" class="card form">
-        <h2>Nowy wydatek</h2>
+      <form id="tx-form" class="card form" autocomplete="off">
+        <div class="segmented" role="radiogroup" aria-label="Rodzaj">
+          <button type="button" data-kind="expense" class="active" role="radio" aria-checked="true">− Wydatek</button>
+          <button type="button" data-kind="income" role="radio" aria-checked="false">+ Przychód</button>
+        </div>
         <label>Kwota (zł)
-          <input name="amount" type="text" inputmode="decimal" placeholder="0,00" required autocomplete="off">
+          <input name="amount" class="amount-input" type="text" inputmode="decimal" placeholder="0,00" required>
         </label>
-        <label>Kategoria
-          <input name="category" list="categories" placeholder="np. jedzenie" required autocomplete="off">
-          <datalist id="categories"></datalist>
-        </label>
-        <div id="category-chips" class="chips"></div>
+        <div>
+          <span class="field-label">Kategoria</span>
+          <div id="category-grid" class="cat-grid"></div>
+          <input name="category" placeholder="albo wpisz własną" maxlength="50" required>
+        </div>
         <label>Opis
-          <input name="description" placeholder="opcjonalnie" maxlength="255" autocomplete="off">
+          <input name="description" placeholder="opcjonalnie" maxlength="255">
         </label>
         <label>Data
           <input name="date" type="date" required>
         </label>
-        <button class="btn" type="submit">Zapisz</button>
+        <button class="btn" type="submit" id="tx-submit">Zapisz wydatek</button>
       </form>
 
       <form id="import-form" class="card form">
         <h2>Import z CSV</h2>
-        <p class="muted">Kolumny: <code>date;amount;category;description</code></p>
+        <p class="muted">Kolumny: <code>date;amount;category;description</code>, opcjonalnie
+          <code>type</code> (<code>wydatek</code>/<code>przychód</code>).</p>
         <input name="file" type="file" accept=".csv,text/csv" required>
         <button class="btn btn-secondary" type="submit">Importuj</button>
         <div id="import-result" class="muted"></div>
@@ -96,19 +107,68 @@
         <h2>Kopia zapasowa</h2>
         <p class="muted local-only" hidden>Dane są zapisane tylko na tym telefonie, w przeglądarce.
           Wyczyszczenie danych Chrome je usunie – rób czasem kopię.</p>
-        <button id="export-csv" class="btn btn-secondary" type="button">Eksportuj wydatki do CSV</button>
-        <button id="backup-save" class="btn btn-secondary local-only" type="button" hidden>Zapisz pełną kopię (wydatki + budżety)</button>
+        <button id="export-csv" class="btn btn-secondary" type="button">Eksportuj do CSV</button>
+        <button id="backup-save" class="btn btn-secondary local-only" type="button" hidden>Zapisz pełną kopię</button>
         <label class="btn btn-secondary local-only file-btn" hidden>Przywróć kopię z pliku
           <input id="backup-load" type="file" accept=".json,application/json" hidden>
         </label>
       </div>
     </section>
 
-    <!-- LISTA -->
-    <section id="view-lista" class="view" hidden>
+    <!-- STAŁE OPŁATY -->
+    <section id="view-oplaty" class="view" hidden>
+      <div class="month-nav card">
+        <button id="bills-prev" class="icon-btn" aria-label="Poprzedni miesiąc">‹</button>
+        <div class="month-nav-center">
+          <strong id="bills-month"></strong>
+          <span id="bills-summary" class="muted"></span>
+        </div>
+        <button id="bills-next" class="icon-btn" aria-label="Następny miesiąc">›</button>
+      </div>
+
       <div class="card">
-        <h2>Wydatki</h2>
-        <ul id="expense-list" class="list"></ul>
+        <h2>Stałe opłaty</h2>
+        <ul id="bills-expense" class="list bills"></ul>
+      </div>
+      <div class="card" id="bills-income-card" hidden>
+        <h2>Stałe przychody</h2>
+        <ul id="bills-income" class="list bills"></ul>
+      </div>
+
+      <form id="recurring-form" class="card form" autocomplete="off">
+        <h2>Dodaj stałą pozycję</h2>
+        <div class="segmented" role="radiogroup" aria-label="Rodzaj">
+          <button type="button" data-kind="expense" class="active">Opłata</button>
+          <button type="button" data-kind="income">Przychód</button>
+        </div>
+        <div id="recurring-presets" class="chips"></div>
+        <label>Nazwa
+          <input name="name" placeholder="np. Prąd" maxlength="100" required>
+        </label>
+        <label>Kategoria
+          <input name="category" placeholder="np. prąd" maxlength="50" required list="all-categories">
+        </label>
+        <div class="row">
+          <label>Typowa kwota (zł)
+            <input name="amount" type="text" inputmode="decimal" required>
+          </label>
+          <label>Dzień płatności
+            <input name="day" type="number" min="1" max="28" value="10" required>
+          </label>
+        </div>
+        <button class="btn" type="submit">Dodaj</button>
+      </form>
+    </section>
+
+    <!-- HISTORIA -->
+    <section id="view-historia" class="view" hidden>
+      <div class="periods" aria-label="Rodzaj">
+        <button data-filter="all" class="active">Wszystko</button>
+        <button data-filter="expense">Wydatki</button>
+        <button data-filter="income">Przychody</button>
+      </div>
+      <div class="card">
+        <ul id="history-list" class="list"></ul>
         <button id="load-more" class="btn btn-secondary" hidden>Pokaż więcej</button>
       </div>
     </section>
@@ -116,28 +176,44 @@
     <!-- BUDŻETY -->
     <section id="view-budzety" class="view" hidden>
       <div class="card">
-        <h2>Budżety – <span id="budget-month"></span></h2>
+        <h2>Limity wydatków – <span id="budget-month"></span></h2>
         <div id="budget-list"></div>
       </div>
-      <form id="budget-form" class="card form">
+      <form id="budget-form" class="card form" autocomplete="off">
         <h2>Ustaw limit miesięczny</h2>
         <label>Kategoria
-          <input name="category" list="categories" required autocomplete="off">
+          <input name="category" list="expense-categories" required>
         </label>
         <label>Limit (zł)
-          <input name="limit" type="text" inputmode="decimal" required autocomplete="off">
+          <input name="limit" type="text" inputmode="decimal" required>
         </label>
         <button class="btn" type="submit">Zapisz limit</button>
       </form>
     </section>
   </main>
 
+  <datalist id="expense-categories"></datalist>
+  <datalist id="all-categories"></datalist>
+
   <nav class="tabbar">
-    <button data-view="analiza" class="active"><span class="ico">📊</span>Analiza</button>
+    <button data-view="pulpit" class="active"><span class="ico">📊</span>Pulpit</button>
     <button data-view="dodaj"><span class="ico">➕</span>Dodaj</button>
-    <button data-view="lista"><span class="ico">📋</span>Lista</button>
-    <button data-view="budzety"><span class="ico">🎯</span>Budżety</button>
+    <button data-view="oplaty"><span class="ico">🧾</span>Opłaty</button>
+    <button data-view="historia"><span class="ico">📋</span>Historia</button>
+    <button data-view="budzety"><span class="ico">🎯</span>Limity</button>
   </nav>
+
+  <!-- Okno: zapłata stałej opłaty / edycja -->
+  <dialog id="dialog" class="dialog">
+    <form method="dialog" id="dialog-form" class="form">
+      <h2 id="dialog-title"></h2>
+      <div id="dialog-body" class="form"></div>
+      <div class="row">
+        <button value="cancel" class="btn btn-secondary" formnovalidate>Anuluj</button>
+        <button value="ok" class="btn" id="dialog-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
 
   <div id="tooltip" class="tooltip" hidden></div>
   <div id="toast" class="toast" hidden></div>

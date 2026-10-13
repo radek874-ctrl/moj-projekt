@@ -8,23 +8,42 @@ import os
 import sqlite3
 from collections.abc import Iterator
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS expenses (
+# Wydatki i przychody mają identyczną strukturę, ale leżą w osobnych tabelach.
+# Klucz to wartość parametru ``kind`` w API.
+TABLES = {"expense": "expenses", "income": "incomes"}
+
+_TRANSACTION_TABLE = """
+CREATE TABLE IF NOT EXISTS {table} (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
     category     TEXT    NOT NULL,
     description  TEXT    NOT NULL DEFAULT '',
     date         TEXT    NOT NULL,
+    recurring_id INTEGER REFERENCES recurring(id) ON DELETE SET NULL,
     created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
-CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category);
+CREATE INDEX IF NOT EXISTS idx_{table}_date ON {table}(date);
+CREATE INDEX IF NOT EXISTS idx_{table}_category ON {table}(category);
+"""
+
+SCHEMA = (
+    """
+CREATE TABLE IF NOT EXISTS recurring (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind         TEXT    NOT NULL CHECK (kind IN ('expense', 'income')),
+    name         TEXT    NOT NULL,
+    category     TEXT    NOT NULL,
+    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+    day          INTEGER NOT NULL CHECK (day BETWEEN 1 AND 28)
+);
 
 CREATE TABLE IF NOT EXISTS budgets (
     category            TEXT PRIMARY KEY,
     monthly_limit_cents INTEGER NOT NULL CHECK (monthly_limit_cents > 0)
 );
 """
+    + "".join(_TRANSACTION_TABLE.format(table=t) for t in TABLES.values())
+)
 
 
 def db_path() -> str:
@@ -44,6 +63,11 @@ def init_db(path: str | None = None) -> None:
     conn = connect(path)
     try:
         conn.executescript(SCHEMA)
+        # Migracja baz sprzed wprowadzenia stałych opłat.
+        columns = {r["name"] for r in conn.execute("PRAGMA table_info(expenses)")}
+        if "recurring_id" not in columns:
+            conn.execute("ALTER TABLE expenses ADD COLUMN recurring_id INTEGER")
+        conn.commit()
     finally:
         conn.close()
 

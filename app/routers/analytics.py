@@ -1,28 +1,60 @@
+"""Statystyki wydatków lub przychodów (parametr ``kind``) oraz bilans domowy."""
+
 import sqlite3
 from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from app.db import from_cents, get_db
-from app.filters import ExpenseFilters
-from app.schemas import CategoryStat, Expense, MonthlyStat, Summary
-from app.routers.expenses import _row_to_expense
+from app.db import TABLES, from_cents, get_db
+from app.filters import DateFilters, TransactionFilters
+from app.routers.transactions import row_to_transaction
+from app.schemas import Balance, BalanceMonth, CategoryStat, Kind, MonthlyStat, Summary, Transaction
 
 router = APIRouter(prefix="/analytics", tags=["analiza"])
 
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
-Filters = Annotated[ExpenseFilters, Depends()]
+Filters = Annotated[TransactionFilters, Depends()]
+KindParam = Annotated[Kind, Query(description="expense = wydatki (domyślnie), income = przychody")]
 
 
-@router.get("/summary", response_model=Summary)
-def summary(db: Db, filters: Filters):
-    """Podsumowanie: suma, liczba, średnia, min/max i średnia dzienna."""
+@router.get("/balance", response_model=Balance, summary="Bilans: przychody − wydatki")
+def balance(db: Db, filters: Annotated[DateFilters, Depends()]):
+    """Ile wpłynęło, ile wydano i ile zostało — łącznie i w podziale na miesiące."""
+    where, params = filters.where()
+    totals: dict[str, dict[str, int]] = {}
+    for kind, table in TABLES.items():
+        for r in db.execute(
+            f"SELECT substr(date, 1, 7) AS month, SUM(amount_cents) AS total "
+            f"FROM {table}{where} GROUP BY month",
+            params,
+        ):
+            totals.setdefault(r["month"], {"expense": 0, "income": 0})[kind] = r["total"]
+
+    income = sum(m["income"] for m in totals.values())
+    expenses = sum(m["expense"] for m in totals.values())
+    return Balance(
+        income=from_cents(income),
+        expenses=from_cents(expenses),
+        balance=from_cents(income - expenses),
+        savings_rate=round(100 * (income - expenses) / income, 2) if income else None,
+        months=[
+            BalanceMonth(month=month, income=from_cents(m["income"]),
+                         expenses=from_cents(m["expense"]),
+                         balance=from_cents(m["income"] - m["expense"]))
+            for month, m in sorted(totals.items())
+        ],
+    )
+
+
+@router.get("/summary", response_model=Summary, summary="Podsumowanie okresu")
+def summary(db: Db, filters: Filters, kind: KindParam = Kind.expense):
+    """Suma, liczba, średnia, min/max i średnia dzienna."""
     where, params = filters.where()
     row = db.execute(
         f"""SELECT COUNT(*) AS cnt, SUM(amount_cents) AS total, MIN(amount_cents) AS mn,
                    MAX(amount_cents) AS mx, MIN(date) AS first, MAX(date) AS last
-            FROM expenses{where}""",
+            FROM {TABLES[kind.value]}{where}""",
         params,
     ).fetchone()
     count = row["cnt"]
@@ -45,13 +77,13 @@ def summary(db: Db, filters: Filters):
     )
 
 
-@router.get("/by-category", response_model=list[CategoryStat])
-def by_category(db: Db, filters: Filters):
-    """Wydatki pogrupowane po kategoriach, posortowane malejąco wg sumy."""
+@router.get("/by-category", response_model=list[CategoryStat], summary="Podział na kategorie")
+def by_category(db: Db, filters: Filters, kind: KindParam = Kind.expense):
+    """Sumy w kategoriach, malejąco, z udziałem procentowym."""
     where, params = filters.where()
     rows = db.execute(
         f"""SELECT category, COUNT(*) AS cnt, SUM(amount_cents) AS total
-            FROM expenses{where} GROUP BY category ORDER BY total DESC, category""",
+            FROM {TABLES[kind.value]}{where} GROUP BY category ORDER BY total DESC, category""",
         params,
     ).fetchall()
     grand_total = sum(r["total"] for r in rows)
@@ -67,34 +99,30 @@ def by_category(db: Db, filters: Filters):
     ]
 
 
-@router.get("/monthly", response_model=list[MonthlyStat])
-def monthly(db: Db, filters: Filters):
+@router.get("/monthly", response_model=list[MonthlyStat], summary="Sumy miesięczne")
+def monthly(db: Db, filters: Filters, kind: KindParam = Kind.expense):
     """Sumy miesięczne wraz ze zmianą procentową miesiąc do miesiąca."""
     where, params = filters.where()
     rows = db.execute(
         f"""SELECT substr(date, 1, 7) AS month, COUNT(*) AS cnt, SUM(amount_cents) AS total
-            FROM expenses{where} GROUP BY month ORDER BY month""",
+            FROM {TABLES[kind.value]}{where} GROUP BY month ORDER BY month""",
         params,
     ).fetchall()
     result, previous = [], None
     for r in rows:
-        change = (
-            round(100 * (r["total"] - previous) / previous, 2) if previous else None
-        )
-        result.append(
-            MonthlyStat(month=r["month"], count=r["cnt"], total=from_cents(r["total"]),
-                        change_percent=change)
-        )
+        change = round(100 * (r["total"] - previous) / previous, 2) if previous else None
+        result.append(MonthlyStat(month=r["month"], count=r["cnt"],
+                                  total=from_cents(r["total"]), change_percent=change))
         previous = r["total"]
     return result
 
 
-@router.get("/top", response_model=list[Expense])
-def top_expenses(db: Db, filters: Filters, limit: int = Query(default=10, ge=1, le=100)):
-    """Największe pojedyncze wydatki."""
+@router.get("/top", response_model=list[Transaction], summary="Największe pozycje")
+def top(db: Db, filters: Filters, kind: KindParam = Kind.expense,
+        limit: int = Query(default=10, ge=1, le=100)):
     where, params = filters.where()
     rows = db.execute(
-        f"SELECT * FROM expenses{where} ORDER BY amount_cents DESC, date DESC LIMIT ?",
+        f"SELECT * FROM {TABLES[kind.value]}{where} ORDER BY amount_cents DESC, date DESC LIMIT ?",
         [*params, limit],
     ).fetchall()
-    return [_row_to_expense(r) for r in rows]
+    return [row_to_transaction(r) for r in rows]

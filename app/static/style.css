@@ -14,6 +14,8 @@
   --accent-ink: #ffffff;
   --series: #3987e5;
   --series-soft: #1c5cab;
+  --income: #199e70;      /* seria „przychody” (zweryfikowana z --expense pod kątem daltonizmu) */
+  --expense: #d95926;     /* seria „wydatki” */
   --good: #2fa52f;
   --warn: #e0a020;
   --bad: #e66767;
@@ -89,11 +91,9 @@ main { max-width: 640px; margin: 0 auto; padding: 12px 16px; }
 /* Słupki miesięczne */
 .cols { position: relative; height: 180px; display: flex; align-items: flex-end; gap: 6px;
   border-bottom: 1px solid var(--border); padding-top: 18px; }
-.col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+.col { flex: 1; height: 100%; display: flex; flex-direction: row; justify-content: center; align-items: flex-end; gap: 2px;
   min-width: 0; padding: 0 1px; }
-.col-fill { width: 100%; max-width: 36px; background: var(--series); border-radius: 4px 4px 0 0; min-height: 2px; }
-.col.current .col-fill { background: var(--series); }
-.col:not(.current) .col-fill { background: var(--series-soft); }
+.col-fill { flex: 1; max-width: 14px; border-radius: 3px 3px 0 0; min-height: 1px; }
 .col-axis { display: flex; gap: 6px; margin-top: 6px; }
 .col-axis span { flex: 1; text-align: center; font-size: 11px; color: var(--muted); min-width: 0; overflow: hidden; }
 
@@ -163,3 +163,55 @@ main { max-width: 640px; margin: 0 auto; padding: 12px 16px; }
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 30;
   max-width: calc(100% - 32px);
 }
+
+/* ---------- przychody / wydatki ---------- */
+.fill-income { background: var(--income); }
+.fill-expense { background: var(--expense); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
+.dot-income { background: var(--income); }
+.dot-expense { background: var(--expense); }
+.legend { display: flex; gap: 16px; font-size: 13px; color: var(--text-2); margin: -4px 0 8px; }
+.tile-note { font-size: 14px; color: var(--text-2); margin-top: 2px; }
+
+.reminder { display: flex; align-items: center; gap: 12px; justify-content: space-between;
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+.reminder .muted { margin-top: 2px; }
+
+/* Przełącznik Wydatek / Przychód */
+.segmented { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 12px; padding: 3px; gap: 3px; }
+.segmented button { border: 0; background: none; color: var(--text-2); font: inherit; font-weight: 600;
+  padding: 10px 0; border-radius: 9px; }
+.segmented button.active { background: var(--accent-bg); color: var(--accent-ink); }
+
+.amount-input { font-size: 28px !important; font-weight: 650; font-variant-numeric: tabular-nums; }
+.field-label { display: block; font-size: 14px; color: var(--text-2); margin-bottom: 6px; }
+
+/* Siatka kategorii */
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; margin-bottom: 8px; }
+.cat { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; color: var(--text-2);
+  font: inherit; font-size: 12px; min-width: 0; }
+.cat-ico { font-size: 22px; line-height: 1.1; }
+.cat-name { max-width: 100%; overflow-wrap: anywhere; text-align: center; line-height: 1.2; font-size: 11px; }
+.cat.active { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent-bg) 22%, var(--surface-2)); }
+
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* Stałe opłaty */
+.month-nav { display: flex; align-items: center; gap: 8px; padding: 10px 8px; }
+.month-nav-center { flex: 1; text-align: center; display: flex; flex-direction: column; }
+.month-nav-center strong { font-size: 17px; text-transform: capitalize; }
+.icon-btn { border: 0; background: none; color: var(--text-2); font-size: 22px; padding: 4px 10px; line-height: 1; }
+.bill-ico { font-size: 22px; width: 30px; text-align: center; flex: none; }
+.bills li.paid .title { color: var(--text-2); }
+.bills li.paid .sub { color: var(--good); }
+.btn-ghost { background: transparent; color: var(--text-2); border: 1px solid var(--border); }
+
+/* Okno dialogowe */
+.dialog { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 16px; width: min(420px, calc(100% - 32px)); }
+.dialog::backdrop { background: rgb(0 0 0 / .6); }
+.dialog h2 { margin: 0; font-size: 17px; }
+.check { flex-direction: row !important; align-items: center; gap: 8px !important; flex-wrap: wrap; }
+.check input { width: auto !important; }

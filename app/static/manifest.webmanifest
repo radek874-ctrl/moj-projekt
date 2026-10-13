@@ -1,7 +1,7 @@
 {
-  "name": "Moje Wydatki",
-  "short_name": "Wydatki",
-  "description": "Rejestrowanie i analiza wydatków",
+  "name": "Budżet domowy",
+  "short_name": "Budżet",
+  "description": "Przychody, wydatki, stałe opłaty i analiza budżetu domowego",
   "lang": "pl",
   "start_url": "./",
   "scope": "./",

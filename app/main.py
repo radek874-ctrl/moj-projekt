@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from app.db import init_db
-from app.routers import analytics, budgets, expenses
+from app.routers import analytics, budgets, recurring, transactions
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -17,14 +17,32 @@ async def lifespan(_: FastAPI):
     yield
 
 
+TAGS = [
+    {"name": "wydatki", "description": "Pojedyncze wydatki: dodawanie, lista z filtrami, edycja, import CSV."},
+    {"name": "przychody", "description": "Wpływy do budżetu domowego (wynagrodzenie, premie, zasiłki...). "
+                                         "Te same operacje co dla wydatków."},
+    {"name": "stałe opłaty", "description": "Co miesiąc powtarzające się pozycje (gaz, prąd, kredyt, pensja). "
+                                            "Jedno wywołanie `/pay` księguje je w danym miesiącu."},
+    {"name": "analiza", "description": "Bilans domowy oraz statystyki wydatków lub przychodów (`kind`)."},
+    {"name": "budżety", "description": "Miesięczne limity wydatków na kategorie."},
+    {"name": "system", "description": "Stan usługi."},
+]
+
 app = FastAPI(
-    title="API do analizy wydatków",
-    description="Rejestrowanie wydatków, import CSV, statystyki i kontrola budżetów.",
-    version="1.0.0",
+    title="Budżet domowy – API",
+    description=(
+        "Przychody, wydatki, stałe opłaty, budżety i analiza.\n\n"
+        "Kwoty w złotych (maks. 2 miejsca po przecinku), daty w formacie `RRRR-MM-DD`, "
+        "miesiące `RRRR-MM`. Kategorie są zapisywane małymi literami."
+    ),
+    version="2.0.0",
     lifespan=lifespan,
+    openapi_tags=TAGS,
 )
 
-app.include_router(expenses.router)
+app.include_router(transactions.expenses_router)
+app.include_router(transactions.incomes_router)
+app.include_router(recurring.router)
 app.include_router(analytics.router)
 app.include_router(budgets.router)
 
