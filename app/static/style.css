@@ -1,25 +1,29 @@
 :root {
-  /* Ciemny motyw (zawsze, niezależnie od ustawień telefonu). */
+  /* Motyw „czerń i złoto” (zawsze ciemny). */
   color-scheme: dark;
-  --bg: #0e0e0d;
-  --surface: #1a1a19;
-  --surface-2: #232321;
-  --border: #2c2c2a;
-  --grid: #262624;
-  --text: #f0efec;
-  --text-2: #c3c2b7;
-  --muted: #8f8e88;
-  --accent: #5598e7;      /* tekst, obramowania, aktywna zakładka */
-  --accent-bg: #2a78d6;   /* tło przycisków (biały tekst ma kontrast 4,6:1) */
-  --accent-ink: #ffffff;
-  --series: #3987e5;
-  --series-soft: #1c5cab;
-  --income: #199e70;      /* seria „przychody” (zweryfikowana z --expense pod kątem daltonizmu) */
-  --expense: #d95926;     /* seria „wydatki” */
-  --good: #2fa52f;
-  --warn: #e0a020;
-  --bad: #e66767;
+  --bg: #0b0b0b;
+  --surface: #141413;
+  --surface-2: #1c1b19;
+  --border: #2b2822;
+  --grid: #23211d;
+  --text: #f3eee4;        /* ciepła biel */
+  --text-2: #c2b9a7;
+  --muted: #8c8474;
+  --gold: #d4af37;        /* akcent: tekst, obramowania, aktywne elementy (9,7:1 na tle) */
+  --gold-soft: #e7cf7d;
+  --gold-deep: #8f7224;
+  --accent: var(--gold);
+  --accent-bg: var(--gold);
+  --accent-ink: #0b0b0b;  /* tekst na złotym tle */
+  --series: #a8862a;
+  --series-soft: #5a4a1c;
+  --income: #a8862a;      /* seria „przychody” – ciemne złoto (zweryfikowane z --expense, także dla daltonistów) */
+  --expense: #5a86c2;     /* seria „wydatki” – stalowy niebieski */
+  --good: #6fae7f;
+  --warn: #e0913a;
+  --bad: #db6a5c;
   --radius: 14px;
+  --serif: "Cormorant Garamond", "Playfair Display", Georgia, "Noto Serif", "Times New Roman", serif;
 }
 
 * { box-sizing: border-box; }
@@ -374,3 +378,136 @@ body.ai-open { overflow: hidden; }
 .sync-create a { color: var(--accent); }
 .invite-text { width: 100%; min-height: 110px; font: inherit; font-size: 13px; color: var(--text);
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 8px; }
+
+/* =====================================================================
+   Motyw czerń i złoto – nadpisania komponentów
+   ===================================================================== */
+.i { width: 1.2em; height: 1.2em; flex: none; vertical-align: -0.22em; fill: none; stroke: currentColor;
+  stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.i.inline { color: var(--gold); margin-right: 4px; }
+
+.topbar { background: var(--bg); border-bottom: 1px solid var(--border); }
+.topbar h1 { font-family: var(--serif); font-weight: 600; font-size: 23px; letter-spacing: .02em; color: var(--gold); }
+.topbar-icon { color: var(--gold); padding: 6px 8px; }
+.topbar-icon .i { width: 23px; height: 23px; }
+.topbar-icon.warn { color: var(--bad); }
+.topbar-icon.spin .i { animation: spin 1.2s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.card { background: var(--surface); border-color: var(--border); }
+.card h2 { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--gold); }
+.card h2 .h-ico .i, .ai-head .h-ico .i { width: 18px; height: 18px; vertical-align: -3px; }
+.h-ico { display: inline-flex; color: var(--gold); }
+
+.tile { background: var(--surface); border-color: var(--border); }
+.tile-label { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.tile-value { font-weight: 400; letter-spacing: -.01em; }
+.tile-hero { background: linear-gradient(160deg, #1a1813 0%, #121211 60%); border-color: #3a3326; }
+.tile-hero .tile-label { color: var(--gold); }
+.tile-hero .tile-value { font-size: 38px; font-weight: 300; letter-spacing: -.02em; }
+.tile-link::after { color: var(--gold); }
+
+.periods button, .chips button { background: transparent; border-color: var(--border); color: var(--text-2); }
+.periods button.active { background: transparent; color: var(--gold); border-color: var(--gold); }
+.chips button { display: inline-flex; align-items: center; gap: 6px; }
+.chips button .i { color: var(--gold); }
+
+.btn { background: var(--gold); color: var(--accent-ink); letter-spacing: .02em; }
+.btn .i { margin-right: 4px; }
+.btn-secondary { background: transparent; color: var(--gold); border: 1px solid var(--gold-deep); }
+.btn-ghost { background: transparent; color: var(--text-2); border: 1px solid var(--border); }
+.btn-small { background: var(--gold); color: var(--accent-ink); }
+.btn-small.btn-ghost { background: transparent; color: var(--text-2); }
+.btn-income { background: var(--gold); color: var(--accent-ink); }
+.btn-expense { background: transparent; color: var(--gold); border: 1px solid var(--gold); }
+
+.segmented { background: var(--bg); border-color: var(--border); }
+.segmented button.active { background: var(--gold); color: var(--accent-ink); }
+
+.form input, .form select { background: var(--bg); border-color: var(--border); }
+.form input:focus, .form select:focus { outline-color: var(--gold); }
+.form label { color: var(--muted); font-size: 13px; letter-spacing: .02em; }
+.amount-input { color: var(--text) !important; font-weight: 300 !important; }
+
+.tabbar { background: var(--bg); border-top: 1px solid var(--border); }
+.tabbar button { color: var(--muted); letter-spacing: .02em; }
+.tabbar .ico { filter: none; opacity: 1; display: inline-flex; }
+.tabbar .ico .i { width: 23px; height: 23px; stroke-width: 1.5; }
+.tabbar button.active { color: var(--gold); font-weight: 600; }
+
+.cat { background: var(--bg); border-color: var(--border); color: var(--text-2); }
+.cat-ico { color: var(--gold); display: inline-flex; }
+.cat-ico .i { width: 26px; height: 26px; stroke-width: 1.4; }
+.cat.active { border-color: var(--gold); color: var(--text); background: #1d1a12; }
+.cat-hint { color: var(--gold); }
+
+.bill-ico { color: var(--gold); display: inline-flex; justify-content: center; }
+.bill-ico .i { width: 22px; height: 22px; }
+.hbar-label { display: flex; align-items: center; gap: 8px; }
+.hbar-label .i { color: var(--gold); }
+.fill-income { background: var(--income); }
+.fill-expense { background: var(--expense); }
+.dot-income { background: var(--income); }
+.dot-expense { background: var(--expense); }
+.budget-head .name { display: inline-flex; align-items: center; gap: 6px; }
+.budget-head .name .i { color: var(--gold); }
+.budget-bar { background: var(--bg); }
+.budget-bar > div { background: var(--gold-deep); }
+.goal-bar > div { background: var(--gold); }
+.goal.done .goal-bar > div { background: var(--good); }
+
+.icon-btn { color: var(--gold); display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn .i { width: 21px; height: 21px; }
+.month-nav .icon-btn .i { width: 24px; height: 24px; }
+
+.insights-list li { align-items: flex-start; }
+.ins-ico { display: inline-flex; color: var(--gold); padding-top: 1px; }
+.ins-alert .ins-ico { color: var(--bad); }
+.ins-warning .ins-ico { color: var(--warn); }
+.ins-good .ins-ico { color: var(--good); }
+.safe-daily strong, .forecast-row strong { font-weight: 400; color: var(--gold-soft); }
+.forecast { background: var(--bg); border: 1px solid var(--border); }
+
+.reminder { border-color: #3a3326; }
+.reminder-events { border-color: #3a3326; }
+.rem-item b { color: var(--warn); }
+.onboarding { border-color: #3a3326; }
+.onb-list button { display: flex; align-items: center; gap: 10px; }
+.onb-list .i { color: var(--gold); width: 20px; height: 20px; }
+.onb-list li.ok .i { color: var(--good); }
+
+.cal-cell { background: var(--bg); border: 1px solid var(--grid); }
+.cal-cell.today { border-color: var(--gold); color: var(--gold); }
+.cal-cell.selected { background: var(--gold); color: var(--accent-ink); border-color: var(--gold); }
+.cal-dots i { background: var(--warn); }
+.cal-cell.selected .cal-dots i { background: var(--accent-ink); }
+
+.hist-day-head { color: var(--gold); letter-spacing: .04em; }
+.hist-tools input[type="search"] { background: var(--surface); border-color: var(--border); }
+.cat-chip { background: transparent !important; color: var(--gold) !important; border-color: var(--gold) !important; }
+.cat-chip .i { width: 16px; height: 16px; }
+
+.toast { background: #1c1a15; color: var(--text); border: 1px solid var(--gold-deep); box-shadow: 0 8px 24px rgb(0 0 0 / .6); }
+.toast-action { color: var(--gold); }
+.tooltip { background: #1c1a15; color: var(--text); border: 1px solid var(--gold-deep); }
+.badge { background: var(--gold); color: var(--accent-ink); }
+
+.dialog { background: var(--surface); border-color: #3a3326; }
+.dialog h2 { font-family: var(--serif); font-size: 21px; font-weight: 600; color: var(--gold); }
+
+.ai-fab { background: var(--gold); color: var(--accent-ink); box-shadow: 0 6px 20px rgb(0 0 0 / .7), 0 0 0 1px #3a3326; }
+.ai-fab .i { width: 26px; height: 26px; }
+.ai-head { background: var(--bg); }
+.ai-head strong { display: inline-flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 21px; color: var(--gold); }
+.ai-user { background: var(--gold); color: var(--accent-ink); }
+.ai-assistant { background: var(--surface); border-color: var(--border); }
+.ai-form { background: var(--bg); }
+.ai-form .btn-small { background: var(--gold); color: var(--accent-ink); }
+.ai-welcome button { display: flex; align-items: center; gap: 8px; background: var(--surface); }
+.ai-welcome button .i { color: var(--gold); }
+
+.legend { color: var(--muted); }
+.banner { background: #1d1612; }
+a { color: var(--gold); }
+.reminder .btn-small { white-space: nowrap; flex: none; }

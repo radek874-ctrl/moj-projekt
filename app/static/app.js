@@ -55,14 +55,14 @@ function toast(msg, actionLabel, action) {
 // =====================================================================
 const CATEGORIES = {
   expense: [
-    ["jedzenie", "🛒"], ["prąd", "⚡"], ["gaz", "🔥"], ["woda", "💧"], ["ogrzewanie", "♨️"],
-    ["czynsz", "🏠"], ["kredyt", "🏦"], ["internet", "🌐"], ["telefon", "📱"], ["paliwo", "⛽"],
-    ["transport", "🚌"], ["ubezpieczenie", "🛡️"], ["zdrowie", "💊"], ["dzieci", "🧸"],
-    ["ubrania", "👕"], ["rozrywka", "🎬"], ["inne", "📦"],
+    ["jedzenie", "cart"], ["prąd", "zap"], ["gaz", "flame"], ["woda", "droplet"], ["ogrzewanie", "heater"],
+    ["czynsz", "home"], ["kredyt", "bank"], ["internet", "wifi"], ["telefon", "phone"], ["paliwo", "fuel"],
+    ["transport", "bus"], ["ubezpieczenie", "shield"], ["zdrowie", "pill"], ["dzieci", "child"],
+    ["ubrania", "shirt"], ["rozrywka", "film"], ["inne", "box"],
   ],
   income: [
-    ["wynagrodzenie", "💼"], ["premia", "🎁"], ["800+", "👶"], ["emerytura", "🧓"],
-    ["zwrot podatku", "🧾"], ["sprzedaż", "🏷️"], ["odsetki", "📈"], ["inne", "💰"],
+    ["wynagrodzenie", "briefcase"], ["premia", "gift"], ["800+", "heart"], ["emerytura", "hourglass"],
+    ["zwrot podatku", "percent"], ["sprzedaż", "tag"], ["odsetki", "trendUp"], ["inne", "coins"],
   ],
 };
 // Gotowe szablony stałych pozycji: [nazwa, kategoria, dzień]
@@ -73,7 +73,9 @@ const RECURRING_PRESETS = {
   income: [["Wynagrodzenie", "wynagrodzenie", 10], ["800+", "800+", 20], ["Emerytura", "emerytura", 1]],
 };
 const ICONS = Object.fromEntries([...CATEGORIES.expense, ...CATEGORIES.income]);
-const icon = (cat) => ICONS[cat] || "•";
+// Dodatkowe skojarzenia dla kategorii spoza listy (np. z terminów kalendarza).
+Object.assign(ICONS, { inne: "box", samochód: "car", podatki: "doc", oszczędności: "gem", paliwo: "fuel" });
+const icon = (cat) => svgIcon(ICONS[cat] || "tag");
 
 // =====================================================================
 // Komunikacja z API (serwer FastAPI albo LocalApi w przeglądarce)
@@ -251,7 +253,7 @@ async function renderBillsReminder() {
   }
   const sum = unpaid.reduce((s, r) => s + r.amount, 0);
   el.innerHTML = `
-    <div><strong>🧾 Do zapłaty w tym miesiącu: ${money(sum)}</strong>
+    <div><strong>${svgIcon("receipt", "inline")} Do zapłaty w tym miesiącu: ${money(sum)}</strong>
       <div class="muted">${unpaid.map((r) => esc(r.name)).join(", ")}</div></div>
     <button class="btn btn-small" type="button">Opłaty ›</button>`;
   el.querySelector("button").addEventListener("click", () => show("oplaty"));
@@ -273,8 +275,8 @@ loaders.pulpit = async () => {
   $("#bal-expenses").textContent = money(bal.expenses);
   $("#bal-note").textContent =
     bal.savings_rate == null ? "Dodaj przychody, żeby zobaczyć, ile zostaje."
-      : bal.balance >= 0 ? `✅ Zostaje ${Math.round(bal.savings_rate)}% przychodów`
-        : `⚠️ Wydatki większe od przychodów o ${money(-bal.balance)}`;
+      : bal.balance >= 0 ? `Zostaje ${Math.round(bal.savings_rate)}% przychodów`
+        : `Wydatki większe od przychodów o ${money(-bal.balance)}`;
 
   renderCategoryBars($("#chart-expense-categories"), expCats, "expense");
   $("#income-categories-card").hidden = !incCats.length;
@@ -287,7 +289,7 @@ loaders.pulpit = async () => {
 // =====================================================================
 // PODPOWIEDZI (liczone lokalnie, bez AI)
 // =====================================================================
-const LEVEL_ICON = { good: "✅", info: "ℹ️", warning: "⚠️", alert: "🚨" };
+const LEVEL_ICON = { good: "checkCircle", info: "info", warning: "alert", alert: "alert" };
 
 async function renderInsights() {
   const { forecast: f, insights } = await api("/analytics/insights");
@@ -309,7 +311,7 @@ async function renderInsights() {
   }
   $("#insights-list").innerHTML = insights
     .filter((i) => i.key !== "forecast")
-    .map((i) => `<li class="ins-${i.level}"><span class="ins-ico">${LEVEL_ICON[i.level] || "•"}</span>
+    .map((i) => `<li class="ins-${i.level}"><span class="ins-ico">${svgIcon(LEVEL_ICON[i.level] || "info")}</span>
       <div><strong>${esc(i.title)}</strong><div>${esc(i.text)}</div></div></li>`).join("");
 }
 
@@ -372,7 +374,7 @@ async function renderRecentChips() {
   for (const t of picks) {
     const b = document.createElement("button");
     b.type = "button";
-    b.textContent = `${icon(t.category)} ${t.description || t.category} · ${money(t.amount)}`;
+    b.innerHTML = `${icon(t.category)} ${esc(t.description || t.category)} · ${money(t.amount)}`;
     b.addEventListener("click", () => {
       txForm.amount.value = String(t.amount).replace(".", ",");
       txForm.description.value = t.description;
@@ -476,7 +478,7 @@ txForm.description.addEventListener("input", () => {
       txForm.category.value = s.category;
       categoryAuto = true;
       const hint = $("#cat-hint");
-      hint.textContent = s.source === "history" ? "✨ jak poprzednio" : "✨ podpowiedź";
+      hint.textContent = s.source === "history" ? "jak poprzednio" : "podpowiedź";
       hint.hidden = false;
       await renderCategoryGrid();
     } catch {}
@@ -594,7 +596,7 @@ function billItem(r) {
     ${r.paid
       ? '<button class="btn btn-small btn-ghost" data-act="undo">Cofnij</button>'
       : `<button class="btn btn-small" data-act="pay">${r.kind === "income" ? "Wpłynęło" : "Zapłać"}</button>`}
-    <button class="icon-btn" data-act="edit" aria-label="Edytuj">✎</button>`;
+    <button class="icon-btn" data-act="edit" aria-label="Edytuj">${svgIcon("edit")}</button>`;
 
   li.querySelector('[data-act="pay"]')?.addEventListener("click", async () => {
     const data = await openDialog(
@@ -663,7 +665,7 @@ loaders.oplaty = async () => {
   const paidCount = expenses.length - unpaid.length;
   $("#bills-summary").textContent = expenses.length
     ? `Zapłacono ${paidCount} z ${expenses.length}` +
-      (unpaid.length ? ` · zostało ${money(unpaid.reduce((s, r) => s + r.amount, 0))}` : " · wszystko opłacone ✓")
+      (unpaid.length ? ` · zostało ${money(unpaid.reduce((s, r) => s + r.amount, 0))}` : " · wszystko opłacone")
     : "";
 
   const expList = $("#bills-expense");
@@ -685,7 +687,7 @@ function renderRecurringPresets() {
   for (const [name, category, day] of RECURRING_PRESETS[recurringKind]) {
     const b = document.createElement("button");
     b.type = "button";
-    b.textContent = `${icon(category)} ${name}`;
+    b.innerHTML = `${icon(category)} ${esc(name)}`;
     b.addEventListener("click", () => {
       recForm.name.value = name;
       recForm.category.value = category;
@@ -730,10 +732,10 @@ recForm.addEventListener("submit", async (ev) => {
 // =====================================================================
 // Gotowe terminy: [tytuł, ikona, powtarzanie, kategoria wydatku]
 const EVENT_PRESETS = [
-  ["OC samochodu", "🚗", "yearly", "ubezpieczenie"], ["Przegląd auta", "🔧", "yearly", "transport"],
-  ["Ubezpieczenie domu", "🏠", "yearly", "ubezpieczenie"], ["Podatek od nieruchomości", "🧾", "yearly", "podatki"],
-  ["PIT", "📄", "yearly", ""], ["Urodziny", "🎂", "yearly", ""], ["Wizyta u lekarza", "🩺", "none", "zdrowie"],
-  ["Wymiana opon", "🛞", "yearly", "transport"],
+  ["OC samochodu", "car", "yearly", "ubezpieczenie"], ["Przegląd auta", "wrench", "yearly", "transport"],
+  ["Ubezpieczenie domu", "home", "yearly", "ubezpieczenie"], ["Podatek od nieruchomości", "doc", "yearly", "podatki"],
+  ["PIT", "doc", "yearly", ""], ["Urodziny", "cake", "yearly", ""], ["Wizyta u lekarza", "heart", "none", "zdrowie"],
+  ["Wymiana opon", "tire", "yearly", "transport"],
 ];
 const REPEAT_LABEL = { none: "jednorazowo", monthly: "co miesiąc", yearly: "co rok" };
 const DAYS_PL = (n) => (n === 1 ? "1 dzień" : `${n} dni`);
@@ -779,8 +781,8 @@ function eventItem(e) {
       ? '<button class="btn btn-small btn-ghost" data-act="undo">Przywróć</button>'
       : '<button class="btn btn-small" data-act="done">Zrobione</button>'}
     ${e.state === "done" ? "" : `<a class="icon-btn" href="${googleCalendarUrl(e)}" target="_blank" rel="noopener"
-        aria-label="Dodaj do Kalendarza Google" title="Dodaj do Kalendarza Google">📆</a>`}
-    <button class="icon-btn" data-act="edit" aria-label="Edytuj">✎</button>`;
+        aria-label="Dodaj do Kalendarza Google" title="Dodaj do Kalendarza Google">${svgIcon("calendar")}</a>`}
+    <button class="icon-btn" data-act="edit" aria-label="Edytuj">${svgIcon("edit")}</button>`;
 
   li.querySelector('[data-act="done"]')?.addEventListener("click", async () => {
     const data = await openDialog(
@@ -799,7 +801,7 @@ function eventItem(e) {
     if (raw && !(amount > 0)) return toast("Podaj poprawną kwotę albo zostaw puste");
     try {
       await api(`/events/${e.id}/done`, json("POST", amount ? { amount } : {}));
-      toast(amount ? `Zrobione, zapisano wydatek ${money(amount)}` : "Zrobione ✓");
+      toast(amount ? `Zrobione, zapisano wydatek ${money(amount)}` : "Zrobione");
     } catch (err) {
       toast("Błąd: " + err.message);
     }
@@ -824,7 +826,7 @@ function eventItem(e) {
          <input name="amount" type="text" inputmode="decimal" value="${e.amount ? String(e.amount).replace(".", ",") : ""}"></label>
        <label>Kategoria wydatku <input name="category" list="expense-categories" value="${esc(e.category || "")}" maxlength="50"></label>
        <label>Notatka <input name="note" value="${esc(e.note)}" maxlength="255"></label>
-       <a class="btn btn-secondary gcal" href="${googleCalendarUrl(e)}" target="_blank" rel="noopener">📆 Dodaj do Kalendarza Google</a>
+       <a class="btn btn-secondary gcal" href="${googleCalendarUrl(e)}" target="_blank" rel="noopener">Dodaj do Kalendarza Google</a>
        ${e.repeat !== "none" ? '<label class="check"><input type="checkbox" name="undo"> Cofnij ostatnie „zrobione”</label>' : ""}
        <label class="check"><input type="checkbox" name="delete"> Usuń ten termin</label>`,
       "Zapisz"
@@ -921,7 +923,7 @@ function renderEventPresets() {
   for (const [title, ico, repeat, category] of EVENT_PRESETS) {
     const b = document.createElement("button");
     b.type = "button";
-    b.textContent = `${ico} ${title}`;
+    b.innerHTML = `${svgIcon(ico)} ${esc(title)}`;
     b.addEventListener("click", () => {
       evForm.title.value = title;
       evForm.repeat.value = repeat;
@@ -998,7 +1000,7 @@ async function renderEventsReminder() {
     return;
   }
   el.innerHTML = `
-    <div class="meta"><strong>📅 Przypomnienia</strong>
+    <div class="meta"><strong>${svgIcon("bell", "inline")} Przypomnienia</strong>
       ${list.slice(0, 4).map((e) => `<div class="rem-item${e.state === "overdue" ? " overdue" : ""}">
         ${esc(e.title)} – <b>${whenLabel(e)}</b> (${formatDate(e.next_date)})${e.amount ? " · " + money(e.amount) : ""}</div>`).join("")}
       ${list.length > 4 ? `<div class="muted">i ${list.length - 4} więcej…</div>` : ""}
@@ -1092,7 +1094,7 @@ function historyItem(t) {
     <span class="bill-ico">${icon(t.category)}</span>
     <span class="meta">
       <span class="title">${esc(t.description || t.category)}</span>
-      <span class="sub">${t.description ? esc(t.category) : ""}${t.recurring_id ? " · 🧾 stała" : ""}</span>
+      <span class="sub">${t.description ? esc(t.category) : ""}${t.recurring_id ? " · stała opłata" : ""}</span>
     </span>
     <span class="amount ${t.kind}">${t.kind === "income" ? "+" : "−"}${money(t.amount)}</span>`;
   b.addEventListener("click", () => editTransaction(t));
@@ -1110,7 +1112,7 @@ loaders.historia = async () => {
   $("#hist-prev").hidden = $("#hist-next").hidden = acrossMonths;
   const chip = $("#hist-cat-chip");
   chip.hidden = !histCategory;
-  if (histCategory) chip.textContent = `${icon(histCategory.category)} ${histCategory.category} ✕`;
+  if (histCategory) chip.innerHTML = `${icon(histCategory.category)} ${esc(histCategory.category)} ${svgIcon("close")}`;
 
   const lists = await Promise.all(kinds
     .filter((k) => !histCategory || histCategory.kind === k)
@@ -1149,8 +1151,8 @@ loaders.historia = async () => {
 // =====================================================================
 // PLAN: cele oszczędnościowe + limity
 // =====================================================================
-const GOAL_PRESETS = [["🏖️", "Wakacje"], ["🛟", "Poduszka finansowa"], ["🚗", "Samochód"], ["🏠", "Remont"],
-  ["🎁", "Prezenty świąteczne"], ["🎓", "Edukacja"]];
+const GOAL_PRESETS = [["sun", "Wakacje"], ["lifebuoy", "Poduszka finansowa"], ["car", "Samochód"], ["home", "Remont"],
+  ["gift", "Prezenty świąteczne"], ["cap", "Edukacja"]];
 const goalForm = $("#goal-form");
 
 function renderGoalPresets() {
@@ -1159,7 +1161,7 @@ function renderGoalPresets() {
   for (const [ico, name] of GOAL_PRESETS) {
     const b = document.createElement("button");
     b.type = "button";
-    b.textContent = `${ico} ${name}`;
+    b.innerHTML = `${svgIcon(ico)} ${esc(name)}`;
     b.addEventListener("click", async () => {
       goalForm.name.value = name;
       if (name === "Poduszka finansowa") {
@@ -1185,7 +1187,7 @@ function goalItem(g) {
   const div = document.createElement("div");
   div.className = "goal" + (g.done ? " done" : "");
   const when = g.deadline ? ` · do ${formatDate(g.deadline)}` : "";
-  const need = g.done ? "🎉 Cel osiągnięty!"
+  const need = g.done ? "Cel osiągnięty – gratulacje!"
     : g.monthly_needed ? `Odkładaj ok. ${money(g.monthly_needed)} miesięcznie, żeby zdążyć`
       : `Brakuje ${money(g.remaining)}`;
   div.innerHTML = `
@@ -1197,7 +1199,7 @@ function goalItem(g) {
     <div class="goal-actions">
       <button type="button" class="btn btn-small" data-act="in">+ Wpłać</button>
       <button type="button" class="btn btn-small btn-ghost" data-act="out">− Wypłać</button>
-      <button type="button" class="icon-btn" data-act="edit" aria-label="Edytuj">✎</button>
+      <button type="button" class="icon-btn" data-act="edit" aria-label="Edytuj">${svgIcon("edit")}</button>
     </div>`;
   const move = async (sign) => {
     const data = await openDialog(sign > 0 ? `Wpłata: ${g.name}` : `Wypłata: ${g.name}`,
@@ -1208,7 +1210,7 @@ function goalItem(g) {
     if (!(amount > 0)) return toast("Podaj poprawną kwotę");
     try {
       const r = await api(`/goals/${g.id}/deposit`, json("POST", { amount: sign * amount }));
-      toast(r.done && !g.done ? `🎉 Cel „${g.name}” osiągnięty!` : `Zapisano: ${money(r.saved)} odłożone`);
+      toast(r.done && !g.done ? `Cel „${g.name}” osiągnięty – gratulacje!` : `Zapisano: ${money(r.saved)} odłożone`);
     } catch (e) {
       toast("Błąd: " + e.message);
     }
@@ -1277,7 +1279,7 @@ loaders.plan = async () => {
   box.innerHTML = "";
   for (const b of list) {
     const state = b.exceeded ? "over" : b.used_percent >= 80 ? "warn" : "ok";
-    const label = b.exceeded ? "⚠ Przekroczono o " + money(-b.remaining) : "Zostało " + money(b.remaining);
+    const label = b.exceeded ? "Przekroczono o " + money(-b.remaining) : "Zostało " + money(b.remaining);
     const div = document.createElement("div");
     div.className = `budget ${state}`;
     div.innerHTML = `
@@ -1340,7 +1342,7 @@ loaders.ustawienia = async () => {
       <span class="bill-ico">${icon(c.category)}</span>
       <span class="meta"><span class="title">${esc(c.category)}</span>
         <span class="sub">${c.kind === "income" ? "przychody" : "wydatki"} · ${c.count} poz. · ${money(c.total)}</span></span>
-      <span class="muted">✎</span></button>`;
+      <span class="muted">${svgIcon("edit")}</span></button>`;
     li.querySelector("button").addEventListener("click", async () => {
       const data = await openDialog(`Kategoria „${c.category}”`, `
         <label>Nowa nazwa <input name="to" list="all-categories" value="${esc(c.category)}" maxlength="50" required></label>
@@ -1380,9 +1382,9 @@ async function renderOnboarding() {
   const done = steps.filter((s) => s[1]).length;
   if (done === steps.length) return (el.hidden = true);
   el.innerHTML = `
-    <div class="onb-head"><strong>👋 Pierwsze kroki</strong><span class="muted">${done}/${steps.length}</span></div>
+    <div class="onb-head"><strong>${svgIcon("flag", "inline")} Pierwsze kroki</strong><span class="muted">${done}/${steps.length}</span></div>
     <ul class="onb-list">${steps.map(([label, ok], i) =>
-      `<li class="${ok ? "ok" : ""}"><button type="button" data-step="${i}">${ok ? "✅" : "⬜"} ${label}</button></li>`).join("")}</ul>
+      `<li class="${ok ? "ok" : ""}"><button type="button" data-step="${i}">${svgIcon(ok ? "checkCircle" : "circle")} <span>${label}</span></button></li>`).join("")}</ul>
     <button type="button" class="btn btn-small btn-ghost" id="onb-hide">Ukryj</button>`;
   el.querySelectorAll("[data-step]").forEach((b) => b.addEventListener("click", () => steps[b.dataset.step][2]()));
   $("#onb-hide").addEventListener("click", () => { lsSet(ONBOARDING_KEY, "1"); el.hidden = true; });
@@ -1399,7 +1401,7 @@ async function renderBackupReminder() {
   const count = (await api("/categories")).reduce((s, c) => s + c.count, 0);
   if (count < 10) return;
   el.innerHTML = `
-    <div><strong>💾 Czas na kopię zapasową</strong>
+    <div><strong>${svgIcon("shieldCheck", "inline")} Czas na kopię zapasową</strong>
       <div class="muted">${last ? `Ostatnia kopia ${days} dni temu.` : "Nie masz jeszcze żadnej kopii."}
         Dane są tylko w tym telefonie.</div></div>
     <button class="btn btn-small" type="button">Zapisz</button>`;
@@ -1470,12 +1472,14 @@ if (LOCAL) {
 // WSPÓLNY BUDŻET (synchronizacja między telefonami – sync.js)
 // =====================================================================
 const SYNC_HELP_URL = "https://github.com/radek874-ctrl/moj-projekt/blob/ccr-fb1dc182-da1ttq/sync/README.md";
-const SYNC_ICON = { off: "", ok: "☁️", syncing: "🔄", error: "⚠️", offline: "📴" };
+const SYNC_ICON = { off: "cloud", ok: "cloud", syncing: "refresh", error: "alert", offline: "cloudOff" };
 
 function updateSyncBadge() {
   const b = $("#sync-status");
   b.hidden = !Sync.enabled();
-  b.textContent = SYNC_ICON[Sync.status] || "☁️";
+  b.innerHTML = svgIcon(SYNC_ICON[Sync.status] || "cloud");
+  b.classList.toggle("spin", Sync.status === "syncing");
+  b.classList.toggle("warn", Sync.status === "error");
   b.title = Sync.status === "error" ? "Błąd synchronizacji: " + Sync.lastError
     : Sync.status === "offline" ? "Brak internetu – zsynchronizuje się później" : "Wspólny budżet";
 }
@@ -1486,15 +1490,15 @@ function renderSyncCard() {
   if (Sync.enabled()) {
     const st = Sync.state();
     const statusText = {
-      ok: "✅ Zsynchronizowano", syncing: "🔄 Synchronizuję…", offline: "📴 Brak internetu – dane czekają w telefonie",
-      error: "⚠️ " + Sync.lastError, off: "",
+      ok: "Zsynchronizowano", syncing: "Synchronizuję…", offline: "Brak internetu – dane czekają w telefonie",
+      error: "Błąd: " + Sync.lastError, off: "",
     }[Sync.status] || "";
     box.innerHTML = `
       <p>Ten telefon korzysta ze <strong>wspólnego budżetu</strong>. Zmiany z każdego telefonu
         trafiają do wszystkich (także te zrobione bez internetu – po połączeniu).</p>
       <p class="muted">${statusText}${st.lastSync ? ` · ostatnio ${new Date(st.lastSync).toLocaleString("pl-PL")}` : ""}</p>
-      <button type="button" class="btn" id="sync-invite">👥 Zaproś osobę</button>
-      <button type="button" class="btn btn-secondary" id="sync-now">🔄 Synchronizuj teraz</button>
+      <button type="button" class="btn" id="sync-invite">${svgIcon("users")} Zaproś osobę</button>
+      <button type="button" class="btn btn-secondary" id="sync-now">${svgIcon("refresh")} Synchronizuj teraz</button>
       <button type="button" class="btn btn-ghost" id="sync-leave">Odłącz ten telefon</button>`;
     $("#sync-invite").addEventListener("click", shareInvite);
     $("#sync-now").addEventListener("click", async () => {
@@ -1576,13 +1580,13 @@ async function joinFromCode(code) {
   const hasData = snap.expenses.length + snap.incomes.length + snap.recurring.length + snap.events.length + snap.goals.length > 0;
   const data = await openDialog("Dołączyć do wspólnego budżetu?", `
     <p>Od teraz wpisy z tego telefonu i od domowników będą wspólne.</p>
-    <p class="muted">⚠️ Każdy, kto ma link zaproszenia, widzi i może zmieniać ten budżet – wysyłaj go tylko zaufanym osobom.</p>
+    <p class="muted">Uwaga: każdy, kto ma link zaproszenia, widzi i może zmieniać ten budżet – wysyłaj go tylko zaufanym osobom.</p>
     ${hasData ? `<label class="check"><input type="checkbox" name="merge" checked>
       Dodaj też moje dotychczasowe wpisy z tego telefonu</label>` : ""}`, "Dołącz");
   if (!data) return;
   try {
     await Sync.join(invite, hasData && data.get("merge") ? "merge" : "replace");
-    toast("Dołączono do wspólnego budżetu 🎉");
+    toast("Dołączono do wspólnego budżetu");
     lsSet(ONBOARDING_KEY, "1");
     updateSyncBadge();
     if ($("#view-ustawienia").hidden) refreshView(); else renderSyncCard();
@@ -1635,4 +1639,5 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
+hydrateIcons();
 show("pulpit");

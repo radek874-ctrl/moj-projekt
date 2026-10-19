@@ -336,7 +336,7 @@ async function askAssistant(content) {
 
       const results = [];
       for (const block of response.content.filter((b) => b.type === "tool_use")) {
-        addAiMessage("tool", `🔎 ${TOOL_LABELS[block.name] || block.name}…`);
+        addAiMessage("tool", `${TOOL_LABELS[block.name] || block.name}…`);
         try {
           const out = await runTool(block.name, block.input);
           results.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(out ?? null) });
@@ -420,8 +420,8 @@ async function openAiSettings() {
       <select name="model">${Object.entries(AI_MODELS).map(([id, m]) =>
         `<option value="${id}"${id === model ? " selected" : ""}>${m.label}</option>`).join("")}</select>
     </label>
-    <p class="muted">💰 Płacisz za użycie: zwykle ułamek centa do kilku centów za pytanie (koszt widać pod każdą odpowiedzią).<br>
-      🔒 Klucz jest zapisany tylko w tym telefonie. Pytania i potrzebne do odpowiedzi dane budżetu są wysyłane do Anthropic.</p>
+    <p class="muted">Płacisz za użycie: zwykle ułamek centa do kilku centów za pytanie (koszt widać pod każdą odpowiedzią).<br>
+      Klucz jest zapisany tylko w tym telefonie. Pytania i potrzebne do odpowiedzi dane budżetu są wysyłane do Anthropic.</p>
     ${hasKey ? '<label class="check"><input type="checkbox" name="forget"> Usuń zapisany klucz z telefonu</label>' : ""}`,
   "Zapisz");
   if (!data) return;
@@ -498,7 +498,7 @@ function initAssistant() {
       const { block, dataUrl } = await imageBlockFromFile(file);
       const note = $("#ai-input").value.trim();
       $("#ai-input").value = "";
-      addAiMessage("user", note || "📷 Paragon", `<img class="ai-photo" src="${dataUrl}" alt="zdjęcie">`);
+      addAiMessage("user", note || "Zdjęcie paragonu", `<img class="ai-photo" src="${dataUrl}" alt="zdjęcie">`);
       askAssistant([block, { type: "text", text: note || "To zdjęcie paragonu. Zapisz go jako wydatek." }]);
     } catch (e) {
       toast(e.message);

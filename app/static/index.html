@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1a1a19">
+  <meta name="theme-color" content="#0b0b0b">
   <meta name="color-scheme" content="dark">
   <title>Budżet domowy</title>
   <link rel="manifest" href="manifest.webmanifest">
@@ -17,7 +17,7 @@
     <div class="topbar-actions">
       <button id="install-btn" class="btn btn-small" hidden>Zainstaluj</button>
       <button id="sync-status" class="icon-btn topbar-icon" type="button" aria-label="Wspólny budżet" hidden></button>
-      <button id="settings-btn" class="icon-btn topbar-icon" type="button" aria-label="Ustawienia" title="Ustawienia">⚙</button>
+      <button id="settings-btn" class="icon-btn topbar-icon" type="button" aria-label="Ustawienia" title="Ustawienia" data-icon="settings"></button>
     </div>
   </header>
 
@@ -62,7 +62,7 @@
       <div id="bills-reminder" class="card reminder" hidden></div>
 
       <div class="card insights" id="insights-card" hidden>
-        <h2>💡 Podpowiedzi</h2>
+        <h2><span class="h-ico" data-icon="bulb"></span>Podpowiedzi</h2>
         <div id="forecast" class="forecast"></div>
         <ul id="insights-list" class="insights-list"></ul>
       </div>
@@ -134,12 +134,12 @@
     <!-- STAŁE OPŁATY -->
     <section id="view-oplaty" class="view" hidden>
       <div class="month-nav card">
-        <button id="bills-prev" class="icon-btn" aria-label="Poprzedni miesiąc">‹</button>
+        <button id="bills-prev" class="icon-btn" aria-label="Poprzedni miesiąc" data-icon="chevLeft"></button>
         <div class="month-nav-center">
           <strong id="bills-month"></strong>
           <span id="bills-summary" class="muted"></span>
         </div>
-        <button id="bills-next" class="icon-btn" aria-label="Następny miesiąc">›</button>
+        <button id="bills-next" class="icon-btn" aria-label="Następny miesiąc" data-icon="chevRight"></button>
       </div>
 
       <div class="card">
@@ -180,9 +180,9 @@
     <section id="view-kalendarz" class="view" hidden>
       <div class="card">
         <div class="month-nav cal-nav">
-          <button id="cal-prev" class="icon-btn" aria-label="Poprzedni miesiąc">‹</button>
+          <button id="cal-prev" class="icon-btn" aria-label="Poprzedni miesiąc" data-icon="chevLeft"></button>
           <div class="month-nav-center"><strong id="cal-month"></strong></div>
-          <button id="cal-next" class="icon-btn" aria-label="Następny miesiąc">›</button>
+          <button id="cal-next" class="icon-btn" aria-label="Następny miesiąc" data-icon="chevRight"></button>
         </div>
         <div class="cal-grid cal-head">
           <span>Pn</span><span>Wt</span><span>Śr</span><span>Cz</span><span>Pt</span><span>So</span><span>Nd</span>
@@ -236,7 +236,7 @@
           <input name="note" maxlength="255" placeholder="opcjonalnie, np. nr polisy">
         </label>
         <label class="check gcal-check"><input type="checkbox" name="gcal" checked>
-          📆 Dodaj też do Kalendarza Google
+          Dodaj też do Kalendarza Google
           <span class="muted">– wtedy telefon sam przypomni, nawet przy zamkniętej aplikacji</span></label>
         <button class="btn" type="submit">Dodaj termin</button>
       </form>
@@ -245,15 +245,15 @@
     <!-- HISTORIA -->
     <section id="view-historia" class="view" hidden>
       <div class="month-nav card">
-        <button id="hist-prev" class="icon-btn" aria-label="Poprzedni miesiąc">‹</button>
+        <button id="hist-prev" class="icon-btn" aria-label="Poprzedni miesiąc" data-icon="chevLeft"></button>
         <div class="month-nav-center">
           <strong id="hist-month"></strong>
           <span id="hist-summary" class="muted"></span>
         </div>
-        <button id="hist-next" class="icon-btn" aria-label="Następny miesiąc">›</button>
+        <button id="hist-next" class="icon-btn" aria-label="Następny miesiąc" data-icon="chevRight"></button>
       </div>
       <div class="hist-tools">
-        <input id="hist-search" type="search" placeholder="🔍 Szukaj (opis, kategoria)" maxlength="100" autocomplete="off">
+        <input id="hist-search" type="search" placeholder="Szukaj (opis, kategoria)" maxlength="100" autocomplete="off">
         <div class="periods" aria-label="Rodzaj">
           <button data-filter="all" class="active">Wszystko</button>
           <button data-filter="expense">Wydatki</button>
@@ -269,7 +269,7 @@
     <!-- PLAN: cele i limity -->
     <section id="view-plan" class="view" hidden>
       <div class="card">
-        <h2>🐷 Cele oszczędnościowe</h2>
+        <h2><span class="h-ico" data-icon="gem"></span>Cele oszczędnościowe</h2>
         <div id="goal-list"></div>
       </div>
       <form id="goal-form" class="card form" autocomplete="off">
@@ -293,7 +293,7 @@
       </form>
 
       <div class="card">
-        <h2>🎯 Limity wydatków – <span id="budget-month"></span></h2>
+        <h2><span class="h-ico" data-icon="target"></span>Limity wydatków – <span id="budget-month"></span></h2>
         <div id="budget-list"></div>
       </div>
       <form id="budget-form" class="card form" autocomplete="off">
@@ -311,12 +311,12 @@
     <!-- USTAWIENIA -->
     <section id="view-ustawienia" class="view" hidden>
       <div class="card form" id="sync-card" hidden>
-        <h2>👥 Wspólny budżet</h2>
+        <h2><span class="h-ico" data-icon="users"></span>Wspólny budżet</h2>
         <div id="sync-body" class="form"></div>
       </div>
 
       <div class="card form">
-        <h2>💾 Kopia zapasowa</h2>
+        <h2><span class="h-ico" data-icon="shieldCheck"></span>Kopia zapasowa</h2>
         <p class="muted local-only" hidden>Dane są zapisane tylko na tym telefonie. Wyczyszczenie danych
           Chrome albo zmiana telefonu je usunie – zapisuj kopię co jakiś czas (np. na Dysk Google).</p>
         <p id="backup-last" class="muted local-only" hidden></p>
@@ -327,13 +327,13 @@
       </div>
 
       <div class="card form">
-        <h2>🏷️ Kategorie</h2>
+        <h2><span class="h-ico" data-icon="tag"></span>Kategorie</h2>
         <p class="muted">Stuknij kategorię, żeby zmienić jej nazwę albo połączyć z inną (np. po literówce).</p>
         <ul id="category-admin" class="list"></ul>
       </div>
 
       <div class="card form">
-        <h2>📤 Eksport i import</h2>
+        <h2><span class="h-ico" data-icon="download"></span>Eksport i import</h2>
         <button id="export-csv" class="btn btn-secondary" type="button">Eksportuj do CSV (Excel)</button>
         <form id="import-form" class="form">
           <p class="muted">Import: kolumny <code>date;amount;category;description</code>, opcjonalnie
@@ -345,13 +345,13 @@
       </div>
 
       <div class="card form">
-        <h2>✨ Asystent AI</h2>
+        <h2><span class="h-ico" data-icon="sparkle"></span>Asystent AI</h2>
         <p class="muted">Klucz API i wybór modelu.</p>
         <button id="ai-settings-open" class="btn btn-secondary" type="button">Ustawienia asystenta</button>
       </div>
 
       <div class="card">
-        <h2>ℹ️ O aplikacji</h2>
+        <h2><span class="h-ico" data-icon="info"></span>O aplikacji</h2>
         <p class="muted">Budżet domowy 3.1 · działa bez internetu · wspólny budżet: Supabase · kursy walut: NBP ·
           asystent: Claude (Anthropic)</p>
       </div>
@@ -362,12 +362,12 @@
   <datalist id="all-categories"></datalist>
 
   <nav class="tabbar">
-    <button data-view="pulpit" class="active"><span class="ico">📊</span>Pulpit</button>
-    <button data-view="dodaj"><span class="ico">➕</span>Dodaj</button>
-    <button data-view="oplaty"><span class="ico">🧾</span>Opłaty</button>
-    <button data-view="kalendarz"><span class="ico">📅</span>Kalendarz<span id="cal-badge" class="badge" hidden></span></button>
-    <button data-view="historia"><span class="ico">📋</span>Historia</button>
-    <button data-view="plan"><span class="ico">🎯</span>Plan</button>
+    <button data-view="pulpit" class="active"><span class="ico" data-icon="dashboard"></span>Pulpit</button>
+    <button data-view="dodaj"><span class="ico" data-icon="plus"></span>Dodaj</button>
+    <button data-view="oplaty"><span class="ico" data-icon="receipt"></span>Opłaty</button>
+    <button data-view="kalendarz"><span class="ico" data-icon="calendar"></span>Kalendarz<span id="cal-badge" class="badge" hidden></span></button>
+    <button data-view="historia"><span class="ico" data-icon="list"></span>Historia</button>
+    <button data-view="plan"><span class="ico" data-icon="target"></span>Plan</button>
   </nav>
 
   <!-- Okno: zapłata stałej opłaty / edycja -->
@@ -383,14 +383,14 @@
   </dialog>
 
   <!-- Asystent AI -->
-  <button id="ai-fab" class="ai-fab" type="button" aria-label="Asystent AI">✨</button>
+  <button id="ai-fab" class="ai-fab" type="button" aria-label="Asystent AI" data-icon="sparkle"></button>
   <section id="ai-panel" class="ai-panel" hidden aria-label="Asystent AI">
     <header class="ai-head">
-      <strong>✨ Asystent</strong>
+      <strong><span class="h-ico" data-icon="sparkle"></span>Asystent</strong>
       <div>
-        <button id="ai-new" class="icon-btn" type="button" aria-label="Nowa rozmowa" title="Nowa rozmowa">🗒️</button>
-        <button id="ai-settings" class="icon-btn" type="button" aria-label="Ustawienia" title="Ustawienia">⚙</button>
-        <button id="ai-close" class="icon-btn" type="button" aria-label="Zamknij">✕</button>
+        <button id="ai-new" class="icon-btn" type="button" aria-label="Nowa rozmowa" title="Nowa rozmowa" data-icon="newChat"></button>
+        <button id="ai-settings" class="icon-btn" type="button" aria-label="Ustawienia" title="Ustawienia" data-icon="settings"></button>
+        <button id="ai-close" class="icon-btn" type="button" aria-label="Zamknij" data-icon="close"></button>
       </div>
     </header>
     <div id="ai-messages" class="ai-messages"></div>
@@ -399,11 +399,11 @@
       <button type="button" data-ask="Ile wydano w tym miesiącu i na co najwięcej?">Ile wydano w tym miesiącu?</button>
       <button type="button" data-ask="Na czym mogę zaoszczędzić? Przeanalizuj moje wydatki z ostatnich 3 miesięcy.">Na czym mogę zaoszczędzić?</button>
       <button type="button" data-ask="Czy starczy mi pieniędzy do końca miesiąca?">Czy starczy do końca miesiąca?</button>
-      <button type="button" data-ask="photo">📷 Zeskanuj paragon</button>
+      <button type="button" data-ask="photo" data-icon="camera"> Zeskanuj paragon</button>
     </div>
     <div id="ai-typing" class="ai-typing" hidden>Asystent myśli…</div>
     <form id="ai-form" class="ai-form" autocomplete="off">
-      <button id="ai-photo-btn" type="button" class="icon-btn" aria-label="Zdjęcie paragonu">📷</button>
+      <button id="ai-photo-btn" type="button" class="icon-btn" aria-label="Zdjęcie paragonu" data-icon="camera"></button>
       <input id="ai-photo" type="file" accept="image/*" capture="environment" hidden>
       <input id="ai-input" placeholder="np. 120 zł za prąd, ile wydano na paliwo?" maxlength="2000">
       <button id="ai-send" class="btn btn-small" type="submit">Wyślij</button>
@@ -414,6 +414,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="config.js"></script>
+  <script src="icons.js"></script>
   <script src="store.js"></script>
   <script src="sync.js"></script>
   <script src="app.js"></script>
