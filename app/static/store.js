@@ -38,7 +38,22 @@ const LocalApi = (() => {
     }
   }
   let db = load();
-  const save = () => localStorage.setItem(KEY, JSON.stringify(db));
+  const listeners = [];
+  const save = () => {
+    localStorage.setItem(KEY, JSON.stringify(db));
+    listeners.forEach((fn) => { try { fn(); } catch {} });
+  };
+
+  // Nowe ID są losowe (a nie kolejne), żeby wpisy dodane na różnych telefonach
+  // we wspólnym budżecie nigdy nie dostały tego samego numeru.
+  const usedIds = () => new Set([...db.expenses, ...db.incomes, ...db.recurring, ...db.events, ...db.goals].map((x) => x.id));
+  function newId() {
+    const taken = usedIds();
+    for (;;) {
+      const id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+      if (!taken.has(id)) return id;
+    }
+  }
 
   class HttpError extends Error {
     constructor(status, message) {
@@ -113,7 +128,7 @@ const LocalApi = (() => {
   });
 
   function insert(kind, row, recurringId = null) {
-    const e = { id: db.nextId++, ...row, recurring_id: recurringId };
+    const e = { id: newId(), ...row, recurring_id: recurringId };
     db[TABLES[kind]].push(e);
     return e;
   }
@@ -728,7 +743,7 @@ const LocalApi = (() => {
 
     ["POST", /^\/recurring$/, (q, body) => {
       const r = {
-        id: db.nextRecurringId++,
+        id: newId(),
         kind: validKind(body.kind),
         name: recurringName(body.name),
         category: category(body.category),
@@ -803,7 +818,7 @@ const LocalApi = (() => {
     }],
 
     ["POST", /^\/events$/, (q, body) => {
-      const ev = { id: db.nextEventId++, ...parseEvent(body), done_until: null };
+      const ev = { id: newId(), ...parseEvent(body), done_until: null };
       db.events.push(ev);
       save();
       return toEvent(ev);
@@ -857,7 +872,7 @@ const LocalApi = (() => {
       const name = String(body.name ?? "").trim();
       if (!name || name.length > 100) throw new HttpError(422, "nazwa: od 1 do 100 znaków");
       const g = {
-        id: db.nextGoalId++,
+        id: newId(),
         name,
         target_cents: toCents(body.target, "target"),
         saved_cents: body.saved != null && Number(body.saved) !== 0 ? toCents(body.saved, "saved") : 0,
@@ -996,5 +1011,18 @@ const LocalApi = (() => {
     save();
   }
 
-  return { request, exportJson, importJson };
+  // ---------- dla synchronizacji wspólnego budżetu (sync.js) ----------
+  const DATA_KEYS = ["expenses", "incomes", "recurring", "events", "goals", "budgets"];
+  /** Kopia danych do synchronizacji (bez liczników ID). */
+  function snapshot() {
+    return JSON.parse(JSON.stringify(Object.fromEntries(DATA_KEYS.map((k) => [k, db[k]]))));
+  }
+  /** Podmienia dane po synchronizacji. */
+  function replaceData(data) {
+    db = normalize(data);
+    localStorage.setItem(KEY, JSON.stringify(db));
+  }
+  const onChange = (fn) => listeners.push(fn);
+
+  return { request, exportJson, importJson, snapshot, replaceData, onChange };
 })();

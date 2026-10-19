@@ -1,0 +1,42 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Numer wersji z GitHub Actions (kolejny numer budowy), żeby nowsze APK instalowały się jako aktualizacja.
+def buildNumber = (System.getenv("VERSION_CODE") ?: "1") as Integer
+def keystorePassword = System.getenv("KEYSTORE_PASSWORD") ?: "budzet-test"
+
+android {
+    namespace 'pl.radek874.budzet'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'pl.radek874.budzet'
+        minSdk 29
+        // 34: aplikacja nie rysuje pod paskiem stanu (Android 15 wymusza to dopiero od targetSdk 35).
+        targetSdk 34
+        versionCode buildNumber
+        versionName "3.1.${buildNumber}"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('../release.keystore')
+            storePassword keystorePassword
+            keyAlias 'budzet'
+            keyPassword keystorePassword
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

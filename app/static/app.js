@@ -1328,6 +1328,7 @@ function saveBackup() {
 }
 
 loaders.ustawienia = async () => {
+  renderSyncCard();
   const last = lsGet(BACKUP_KEY);
   $("#backup-last").textContent = last ? `Ostatnia kopia: ${formatDate(last)}` : "Nie zapisano jeszcze żadnej kopii.";
   const cats = await api("/categories");
@@ -1410,6 +1411,12 @@ async function renderBackupReminder() {
 // Eksport i kopia zapasowa
 // =====================================================================
 function download(name, text, type) {
+  // W aplikacji na Androida (APK) zapis do „Pobranych” robi system.
+  if (window.AndroidBridge?.saveFile) {
+    if (!window.AndroidBridge.saveFile(name, text, type)) toast("Nie udało się zapisać pliku");
+    else toast(`Zapisano w Pobranych: ${name}`);
+    return;
+  }
   const url = URL.createObjectURL(new Blob([text], { type }));
   const a = Object.assign(document.createElement("a"), { href: url, download: name });
   document.body.appendChild(a);
@@ -1457,6 +1464,154 @@ if (LOCAL) {
   });
   // Poproś przeglądarkę, żeby nie usuwała danych przy braku miejsca.
   navigator.storage?.persist?.();
+}
+
+// =====================================================================
+// WSPÓLNY BUDŻET (synchronizacja między telefonami – sync.js)
+// =====================================================================
+const SYNC_HELP_URL = "https://github.com/radek874-ctrl/moj-projekt/blob/ccr-fb1dc182-da1ttq/sync/README.md";
+const SYNC_ICON = { off: "", ok: "☁️", syncing: "🔄", error: "⚠️", offline: "📴" };
+
+function updateSyncBadge() {
+  const b = $("#sync-status");
+  b.hidden = !Sync.enabled();
+  b.textContent = SYNC_ICON[Sync.status] || "☁️";
+  b.title = Sync.status === "error" ? "Błąd synchronizacji: " + Sync.lastError
+    : Sync.status === "offline" ? "Brak internetu – zsynchronizuje się później" : "Wspólny budżet";
+}
+
+function renderSyncCard() {
+  const box = $("#sync-body");
+  if (!box) return;
+  if (Sync.enabled()) {
+    const st = Sync.state();
+    const statusText = {
+      ok: "✅ Zsynchronizowano", syncing: "🔄 Synchronizuję…", offline: "📴 Brak internetu – dane czekają w telefonie",
+      error: "⚠️ " + Sync.lastError, off: "",
+    }[Sync.status] || "";
+    box.innerHTML = `
+      <p>Ten telefon korzysta ze <strong>wspólnego budżetu</strong>. Zmiany z każdego telefonu
+        trafiają do wszystkich (także te zrobione bez internetu – po połączeniu).</p>
+      <p class="muted">${statusText}${st.lastSync ? ` · ostatnio ${new Date(st.lastSync).toLocaleString("pl-PL")}` : ""}</p>
+      <button type="button" class="btn" id="sync-invite">👥 Zaproś osobę</button>
+      <button type="button" class="btn btn-secondary" id="sync-now">🔄 Synchronizuj teraz</button>
+      <button type="button" class="btn btn-ghost" id="sync-leave">Odłącz ten telefon</button>`;
+    $("#sync-invite").addEventListener("click", shareInvite);
+    $("#sync-now").addEventListener("click", async () => {
+      const changed = await Sync.syncNow();
+      toast(Sync.status === "ok" ? "Zsynchronizowano" : Sync.lastError || "Błąd");
+      if (changed) refreshView();
+    });
+    $("#sync-leave").addEventListener("click", () => {
+      if (!confirm("Odłączyć ten telefon od wspólnego budżetu? Dane zostaną w telefonie, ale przestaną się synchronizować.")) return;
+      Sync.leave();
+      renderSyncCard();
+      updateSyncBadge();
+    });
+    return;
+  }
+  const cfg = Sync.config() || {};
+  box.innerHTML = `
+    <p>Prowadź jeden budżet razem z domownikami – każdy na swoim telefonie.</p>
+    <label>Masz zaproszenie? Wklej link lub kod
+      <input id="sync-code" placeholder="https://…#join=… albo kod" autocomplete="off">
+    </label>
+    <button type="button" class="btn" id="sync-join">Dołącz</button>
+    <details class="sync-create">
+      <summary>Załóż nowy wspólny budżet</summary>
+      <p class="muted">Potrzebna jest darmowa baza Supabase (jednorazowo, ok. 5 minut) –
+        <a href="${SYNC_HELP_URL}" target="_blank" rel="noopener">instrukcja krok po kroku</a>.
+        Osoby, które zaprosisz, nie muszą nic konfigurować.</p>
+      <label>Project URL <input id="sync-url" placeholder="https://xxxx.supabase.co" value="${esc(cfg.url || "")}" autocomplete="off"></label>
+      <label>Klucz publiczny (publishable / anon) <input id="sync-key" placeholder="sb_publishable_… albo eyJ…" value="${esc(cfg.key || "")}" autocomplete="off"></label>
+      <button type="button" class="btn btn-secondary" id="sync-create">Utwórz i wyślij dane z tego telefonu</button>
+    </details>`;
+  $("#sync-join").addEventListener("click", () => joinFromCode($("#sync-code").value));
+  $("#sync-create").addEventListener("click", async () => {
+    const url = $("#sync-url").value.trim(), key = $("#sync-key").value.trim();
+    if (!/^https:\/\/.+/.test(url) || key.length < 20) return toast("Wpisz Project URL i klucz anon z Supabase");
+    try {
+      await Sync.create({ url, key });
+      toast("Wspólny budżet utworzony – zaproś domowników");
+      renderSyncCard();
+      updateSyncBadge();
+      shareInvite();
+    } catch (e) {
+      toast("Błąd: " + e.message);
+    }
+  });
+}
+
+async function shareInvite() {
+  const link = Sync.inviteLink();
+  const text = "Dołącz do naszego wspólnego budżetu domowego:";
+  if (window.AndroidBridge?.share) {
+    window.AndroidBridge.share("Budżet domowy", `${text} ${link}`);
+    return;
+  }
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: "Budżet domowy", text, url: link });
+      return;
+    }
+  } catch (e) {
+    if (e.name === "AbortError") return;
+  }
+  try {
+    await navigator.clipboard.writeText(link);
+    toast("Link zaproszenia skopiowany – wklej go np. w WhatsAppie");
+  } catch {
+    await openDialog("Link zaproszenia", `<textarea class="invite-text" readonly>${esc(link)}</textarea>`, "OK");
+  }
+}
+
+async function joinFromCode(code) {
+  let invite;
+  try {
+    invite = Sync.parseInvite(code);
+  } catch {
+    return toast("To nie wygląda na poprawne zaproszenie");
+  }
+  const snap = LocalApi.snapshot();
+  const hasData = snap.expenses.length + snap.incomes.length + snap.recurring.length + snap.events.length + snap.goals.length > 0;
+  const data = await openDialog("Dołączyć do wspólnego budżetu?", `
+    <p>Od teraz wpisy z tego telefonu i od domowników będą wspólne.</p>
+    <p class="muted">⚠️ Każdy, kto ma link zaproszenia, widzi i może zmieniać ten budżet – wysyłaj go tylko zaufanym osobom.</p>
+    ${hasData ? `<label class="check"><input type="checkbox" name="merge" checked>
+      Dodaj też moje dotychczasowe wpisy z tego telefonu</label>` : ""}`, "Dołącz");
+  if (!data) return;
+  try {
+    await Sync.join(invite, hasData && data.get("merge") ? "merge" : "replace");
+    toast("Dołączono do wspólnego budżetu 🎉");
+    lsSet(ONBOARDING_KEY, "1");
+    updateSyncBadge();
+    if ($("#view-ustawienia").hidden) refreshView(); else renderSyncCard();
+  } catch (e) {
+    toast("Błąd: " + e.message);
+  }
+}
+
+if (LOCAL) {
+  $("#sync-card").hidden = false;
+  $("#sync-status").addEventListener("click", () => show("ustawienia"));
+  Sync.onStatus(() => { updateSyncBadge(); if (!$("#view-ustawienia").hidden) renderSyncCard(); });
+  Sync.onRemoteChange = refreshView;
+  LocalApi.onChange(() => Sync.scheduleSync());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") Sync.syncNow().then((changed) => changed && refreshView());
+  });
+  window.addEventListener("online", () => Sync.syncNow().then((changed) => changed && refreshView()));
+  setInterval(() => {
+    if (document.visibilityState === "visible") Sync.syncNow().then((changed) => changed && refreshView());
+  }, 60000);
+  updateSyncBadge();
+  if (location.hash.startsWith("#join=")) {
+    const code = location.hash;
+    history.replaceState(null, "", location.pathname);
+    setTimeout(() => joinFromCode(code), 300);
+  } else {
+    Sync.syncNow().then((changed) => changed && refreshView());
+  }
 }
 
 // =====================================================================

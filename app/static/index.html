@@ -16,6 +16,7 @@
     <h1>Budżet domowy</h1>
     <div class="topbar-actions">
       <button id="install-btn" class="btn btn-small" hidden>Zainstaluj</button>
+      <button id="sync-status" class="icon-btn topbar-icon" type="button" aria-label="Wspólny budżet" hidden></button>
       <button id="settings-btn" class="icon-btn topbar-icon" type="button" aria-label="Ustawienia" title="Ustawienia">⚙</button>
     </div>
   </header>
@@ -309,6 +310,11 @@
 
     <!-- USTAWIENIA -->
     <section id="view-ustawienia" class="view" hidden>
+      <div class="card form" id="sync-card" hidden>
+        <h2>👥 Wspólny budżet</h2>
+        <div id="sync-body" class="form"></div>
+      </div>
+
       <div class="card form">
         <h2>💾 Kopia zapasowa</h2>
         <p class="muted local-only" hidden>Dane są zapisane tylko na tym telefonie. Wyczyszczenie danych
@@ -409,6 +415,7 @@
 
   <script src="config.js"></script>
   <script src="store.js"></script>
+  <script src="sync.js"></script>
   <script src="app.js"></script>
   <script src="assistant.js"></script>
 </body>

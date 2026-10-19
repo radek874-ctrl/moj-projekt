@@ -8,6 +8,13 @@ terminów z przypomnieniami, limity wydatków i analiza budżetu domowego. Ten s
 | **Aplikacja w przeglądarce** (zalecany) | w telefonie (pamięć przeglądarki) | https://radek874-ctrl.github.io/moj-projekt/ → „Zainstaluj” |
 | **Serwer API** (FastAPI + SQLite) | plik `expenses.db` | `uvicorn app.main:app` |
 
+**Aplikacja na Androida (APK do testów):**
+https://github.com/radek874-ctrl/moj-projekt/releases/download/android-latest/budzet-domowy.apk
+(szczegóły: [android/README.md](android/README.md)).
+
+**Wspólny budżet na kilku telefonach:** ⚙ → 👥 Wspólny budżet. Konfiguracja bazy (raz):
+[sync/README.md](sync/README.md).
+
 ## Najważniejsze pojęcia
 
 | Pojęcie | Zasób API | Przykład |
@@ -210,6 +217,16 @@ cd moj-projekt
 Serwer nasłuchuje tylko na `127.0.0.1`. Skróty na ekran główny tworzy
 *Termux:Widget* („Wydatki”, „Wydatki stop”).
 
+## Wspólny budżet (synchronizacja)
+
+`app/static/sync.js` synchronizuje dane w trybie bez serwera przez Supabase
+(`sync/supabase-setup.sql`: tabela zamknięta przez RLS + funkcje `budget_create`,
+`budget_get`, `budget_put` wymagające losowego klucza budżetu). Każdy telefon ma pełną
+kopię danych. Synchronizacja: pobierz → scal trójstronnie względem ostatniego wspólnego
+stanu (rekord po rekordzie, także limity) → zapisz z kontrolą wersji (przy konflikcie
+powtórz). Nowe wpisy dostają losowe ID, żeby nie kolidowały między telefonami.
+Zaproszenie to link `#join=…` z adresem bazy, kluczem publicznym i kluczem budżetu.
+
 ## Uruchomienie serwera i testy
 
 ```bash
@@ -241,9 +258,12 @@ app/
   static/              # aplikacja (HTML/CSS/JS, manifest, service worker)
     store.js           # API w przeglądarce (tryb bez serwera)
     assistant.js       # asystent AI (Claude) z narzędziami
+    sync.js            # wspólny budżet – synchronizacja przez Supabase
     vendor/            # dołączone SDK Anthropic
 start.sh / stop.sh     # serwer w Termuxie
 install-termux.sh      # instalacja w Termuxie
+sync/                  # konfiguracja bazy wspólnego budżetu (Supabase)
+android/               # aplikacja Android (WebView) budowana w GitHub Actions
 tests/test_api.py
 ```
 
