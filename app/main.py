@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from app.db import init_db
-from app.routers import analytics, budgets, events, recurring, transactions
+from app.routers import analytics, budgets, categories, events, goals, recurring, transactions
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -26,6 +26,8 @@ TAGS = [
     {"name": "kalendarz", "description": "Ważne terminy (OC, przegląd, podatki, urodziny) z przypomnieniem "
                                          "kilka dni wcześniej; jednorazowe lub co miesiąc / co rok."},
     {"name": "analiza", "description": "Bilans domowy oraz statystyki wydatków lub przychodów (`kind`)."},
+    {"name": "cele", "description": "Cele oszczędnościowe: postęp i ile odkładać miesięcznie."},
+    {"name": "kategorie", "description": "Przegląd kategorii oraz zmiana nazwy i scalanie."},
     {"name": "budżety", "description": "Miesięczne limity wydatków na kategorie."},
     {"name": "system", "description": "Stan usługi."},
 ]
@@ -33,11 +35,11 @@ TAGS = [
 app = FastAPI(
     title="Budżet domowy – API",
     description=(
-        "Przychody, wydatki, stałe opłaty, kalendarz terminów, budżety i analiza.\n\n"
+        "Przychody, wydatki, stałe opłaty, kalendarz terminów, cele, budżety i analiza.\n\n"
         "Kwoty w złotych (maks. 2 miejsca po przecinku), daty w formacie `RRRR-MM-DD`, "
         "miesiące `RRRR-MM`. Kategorie są zapisywane małymi literami."
     ),
-    version="2.0.0",
+    version="3.0.0",
     lifespan=lifespan,
     openapi_tags=TAGS,
 )
@@ -48,6 +50,8 @@ app.include_router(recurring.router)
 app.include_router(events.router)
 app.include_router(analytics.router)
 app.include_router(budgets.router)
+app.include_router(goals.router)
+app.include_router(categories.router)
 
 
 @app.get("/health", tags=["system"])

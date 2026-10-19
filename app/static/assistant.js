@@ -73,6 +73,7 @@ const AI_TOOLS = [
       properties: {
         kind: KIND, date_from: DATE, date_to: DATE,
         category: { type: "string", description: "Kategoria (małymi literami)" },
+        q: { type: "string", description: "Szukaj w opisie i kategorii, np. „orlen”" },
         limit: { type: "integer", minimum: 1, maximum: 200, description: "Ile pozycji (domyślnie 50)" },
       },
       required: ["kind"],
@@ -97,6 +98,11 @@ const AI_TOOLS = [
     name: "get_budgets",
     description: "Miesięczne limity wydatków na kategorie: ile wydano, ile zostało, czy przekroczono.",
     input_schema: { type: "object", properties: { month: MONTH } },
+  },
+  {
+    name: "get_goals",
+    description: "Cele oszczędnościowe: kwota celu, odłożone, postęp %, termin i ile odkładać miesięcznie.",
+    input_schema: { type: "object", properties: {} },
   },
   {
     name: "add_transaction",
@@ -153,6 +159,7 @@ const TOOL_LABELS = {
   get_bills: "sprawdzam stałe opłaty",
   get_events: "zaglądam do kalendarza",
   get_budgets: "sprawdzam limity",
+  get_goals: "sprawdzam cele",
   add_transaction: "zapis wpisu",
   pay_bill: "opłacenie rachunku",
   add_event: "nowy termin",
@@ -177,7 +184,7 @@ async function runTool(name, input) {
       return api("/analytics/by-category" + qs({ kind: p.kind, date_from: p.date_from, date_to: p.date_to }));
     case "list_transactions":
       return api(PATH[p.kind === "income" ? "income" : "expense"] + qs({
-        date_from: p.date_from, date_to: p.date_to, category: p.category, limit: Math.min(p.limit || 50, 200),
+        date_from: p.date_from, date_to: p.date_to, category: p.category, q: p.q, limit: Math.min(p.limit || 50, 200),
       }));
     case "get_insights":
       return api("/analytics/insights");
@@ -185,6 +192,8 @@ async function runTool(name, input) {
       return api("/recurring" + qs({ month: p.month }));
     case "get_events":
       return api("/events");
+    case "get_goals":
+      return api("/goals");
     case "get_budgets":
       return api("/budgets/status" + qs({ month: p.month }));
     case "add_transaction": {
@@ -242,6 +251,7 @@ Zasady:
 - Ze zdjęcia paragonu odczytaj sklep, datę i sumę do zapłaty (nie pojedyncze pozycje), zaproponuj kategorię i zapisz jeden wydatek przez add_transaction. Jeśli zdjęcie jest nieczytelne, powiedz to.
 - Odpowiadaj po polsku, krótko i konkretnie, jak w czacie na telefonie. Kwoty pisz jak „1 234,56 zł”. Możesz używać **pogrubienia** i krótkich list z myślnikami, bez tabel i nagłówków.
 - Zwracaj się do użytkownika neutralnie, bez form zależnych od płci (np. „wydano”, „Twoje wydatki”, „możesz”).
+- Prognoza z get_insights zawiera safe_daily – ile można wydawać dziennie do końca miesiąca; używaj jej przy pytaniach „ile mogę wydać”.
 - Rady dawaj praktyczne i oparte na danych użytkownika; nie udzielaj porad inwestycyjnych ani prawnych.`;
 }
 

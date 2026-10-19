@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS events (
     note         TEXT    NOT NULL DEFAULT '',
     done_until   TEXT
 );
+
+-- Cele oszczędnościowe (np. wakacje, poduszka finansowa).
+CREATE TABLE IF NOT EXISTS goals (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT    NOT NULL,
+    target_cents INTEGER NOT NULL CHECK (target_cents > 0),
+    saved_cents  INTEGER NOT NULL DEFAULT 0 CHECK (saved_cents >= 0),
+    deadline     TEXT
+);
 """
     + "".join(_TRANSACTION_TABLE.format(table=t) for t in TABLES.values())
 )
@@ -70,6 +79,8 @@ def connect(path: str | None = None) -> sqlite3.Connection:
     conn = sqlite3.connect(path or db_path(), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # LOWER() w SQLite zna tylko litery ASCII; ta wersja obsługuje też „Ł”, „Ż” itd.
+    conn.create_function("ulower", 1, lambda s: s.lower() if isinstance(s, str) else s, deterministic=True)
     return conn
 
 

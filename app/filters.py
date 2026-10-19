@@ -31,12 +31,16 @@ class TransactionFilters(DateFilters):
     """Zakres dat + kategoria."""
 
     category: str | None = Query(default=None, description="Kategoria")
+    q: str | None = Query(default=None, max_length=100, description="Szukaj w opisie i kategorii")
 
     def clauses(self) -> tuple[list[str], list]:
         clauses, params = super().clauses()
         if self.category:
             clauses.append("category = ?")
             params.append(self.category.strip().lower())
+        if self.q and self.q.strip():
+            clauses.append("instr(ulower(description || ' ' || category), ?) > 0")
+            params.append(self.q.strip().lower())
         return clauses, params
 
 

@@ -93,6 +93,25 @@ wcześniej. Termin może być jednorazowy albo powtarzać się co miesiąc / co 
 `overdue` – po terminie i nieodhaczony, `later` – jeszcze nie czas,
 `done` – jednorazowy i zrobiony. `repeat`: `none`, `monthly`, `yearly`.
 
+### Cele oszczędnościowe `/goals`
+
+| Metoda | Ścieżka | Opis |
+|---|---|---|
+| `POST` | `/goals` | Dodaj: `{"name": "Wakacje", "target": 4000, "saved": 500, "deadline": "2027-06-30"}` |
+| `GET` | `/goals` | Lista z `percent`, `remaining`, `monthly_needed` (ile odkładać miesięcznie do terminu), `done` |
+| `POST` | `/goals/{id}/deposit` | Wpłata `{"amount": 300}` albo wypłata `{"amount": -100}` |
+| `PATCH` / `DELETE` | `/goals/{id}` | Zmień (`"deadline": null` usuwa termin) / usuń |
+
+### Kategorie `/categories`
+
+| Metoda | Ścieżka | Opis |
+|---|---|---|
+| `GET` | `/categories` | Używane kategorie z liczbą wpisów i sumą, najczęstsze pierwsze |
+| `POST` | `/categories/rename` | `{"kind": "expense", "from": "jedzneie", "to": "jedzenie"}` – zmiana nazwy lub scalenie (wpisy, stałe opłaty, terminy, limity) |
+
+Listy `/expenses` i `/incomes` (oraz statystyki) przyjmują też `q` – wyszukiwanie w opisie
+i kategorii bez rozróżniania wielkości liter (także polskich znaków).
+
 ### Analiza `/analytics`
 
 | Ścieżka | Zwraca |
@@ -128,6 +147,8 @@ Liczone lokalnie, za darmo i bez internetu (`app/insights.py`, to samo w `store.
 - **skoki w kategoriach**: o ≥30% i ≥50 zł więcej niż średnia z 3 miesięcy;
 - **nietypowo duże wydatki**: ponad 3× mediana kategorii z ostatnich 180 dni;
 - **nadchodzące koszty** z kalendarza (30 dni) i **ocena oszczędzania** w zeszłym miesiącu.
+- **bezpieczna kwota na dzień** (`forecast.safe_daily`): przychody miesiąca − wydane − niezapłacone
+  stałe opłaty, podzielone przez pozostałe dni (podobnie jak „safe to spend” w PocketGuard).
 
 `GET /analytics/suggest-category?text=Orlen&kind=expense` → `{"category": "paliwo", "source": "keywords"}`.
 Najpierw sprawdza Twoje wcześniejsze wpisy (`history`), potem słownik (`keywords`).
@@ -154,6 +175,14 @@ wykres przychodów i wydatków, kategorie), **Dodaj** (wydatek/przychód,
 kategorie z ikonami, import, kopia zapasowa), **Opłaty** (stałe pozycje
 z przyciskiem „Zapłać”), **Kalendarz** (siatka miesiąca, terminy, przypomnienia,
 link „Dodaj do Kalendarza Google” dla powiadomień systemowych), **Historia**, **Limity**.
+
+Dodatkowo: **edycja i usuwanie wpisu** po stuknięciu w historii (z „Cofnij”), historia miesiąc
+po miesiącu z sumami dziennymi i wyszukiwarką, stuknięcie kategorii na Pulpicie otwiera jej wpisy,
+**„Powtórz”** ostatnie wpisy jednym dotknięciem, kategorie posortowane wg częstości, **wydatki
+w obcej walucie** przeliczane po kursie średnim NBP z dnia wydatku (api.nbp.pl, tabela A; bez
+internetu można wpisać kurs ręcznie), zakładka **Plan** (cele + limity), **Ustawienia** (⚙: kopia,
+kategorie, eksport/import, asystent), karta **„Pierwsze kroki”** dla nowych użytkowników
+i **przypomnienie o kopii zapasowej** co 30 dni.
 
 Przypomnienia pokazują się na Pulpicie i jako licznik na zakładce (oraz na ikonie
 aplikacji, jeśli telefon to obsługuje) – po otwarciu aplikacji.
@@ -205,6 +234,8 @@ app/
     transactions.py    # /expenses i /incomes (wspólna fabryka) + import CSV
     recurring.py       # /recurring – stałe opłaty i przychody
     events.py          # /events – kalendarz terminów i przypomnienia
+    goals.py           # /goals – cele oszczędnościowe
+    categories.py      # /categories – przegląd, zmiana nazwy, scalanie
     analytics.py       # /analytics – bilans i statystyki
     budgets.py         # /budgets – limity wydatków
   static/              # aplikacja (HTML/CSS/JS, manifest, service worker)

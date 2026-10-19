@@ -126,6 +126,9 @@ class Forecast(BaseModel):
     projected_income: float
     projected_expenses: float
     projected_balance: float = Field(description="Prognozowany bilans na koniec miesiąca")
+    safe_daily: float | None = Field(
+        description="Ile można wydawać dziennie do końca miesiąca (przychody − wydane − niezapłacone "
+                    "stałe opłaty, podzielone przez pozostałe dni); null bez przychodów")
 
 
 class Insight(BaseModel):
@@ -283,6 +286,77 @@ class CalendarItem(BaseModel):
     title: str
     date: dt.date
     done: bool
+
+
+# ---------- cele oszczędnościowe ----------
+
+class GoalCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100, examples=["Wakacje"])
+    target: Amount = Field(gt=0, max_digits=12, decimal_places=2, examples=[5000])
+    saved: Amount = Field(default=Decimal(0), ge=0, max_digits=12, decimal_places=2)
+    deadline: dt.date | None = Field(default=None, description="Do kiedy (opcjonalnie)")
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("nazwa nie może być pusta")
+        return v
+
+
+class GoalUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    target: Amount | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    deadline: dt.date | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("nazwa nie może być pusta")
+        return v
+
+
+class GoalDeposit(BaseModel):
+    amount: Amount = Field(max_digits=12, decimal_places=2,
+                           description="Wpłata (dodatnia) albo wypłata (ujemna)")
+
+
+class Goal(BaseModel):
+    id: int
+    name: str
+    target: float
+    saved: float
+    deadline: dt.date | None
+    percent: int = Field(description="Postęp w % (zaokrąglony w dół)")
+    remaining: float
+    monthly_needed: float | None = Field(description="Ile odkładać miesięcznie, żeby zdążyć (gdy jest termin)")
+    done: bool
+
+
+# ---------- kategorie ----------
+
+class CategoryInfo(BaseModel):
+    kind: Kind
+    category: str
+    count: int
+    total: float
+
+
+class CategoryRename(BaseModel):
+    kind: Kind
+    old: str = Field(min_length=1, max_length=50, alias="from")
+    new: str = Field(min_length=1, max_length=50, alias="to")
+
+    model_config = {"populate_by_name": True}
+
+    _old = field_validator("old")(_normalize_category)
+    _new = field_validator("new")(_normalize_category)
+
+
+class RenameResult(BaseModel):
+    updated: int = Field(description="Ile wpisów zmieniono")
 
 
 # ---------- budżety ----------

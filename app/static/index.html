@@ -14,7 +14,10 @@
 <body>
   <header class="topbar">
     <h1>Budżet domowy</h1>
-    <button id="install-btn" class="btn btn-small" hidden>Zainstaluj</button>
+    <div class="topbar-actions">
+      <button id="install-btn" class="btn btn-small" hidden>Zainstaluj</button>
+      <button id="settings-btn" class="icon-btn topbar-icon" type="button" aria-label="Ustawienia" title="Ustawienia">⚙</button>
+    </div>
   </header>
 
   <div id="offline" class="banner" hidden>
@@ -53,6 +56,7 @@
         <button type="button" class="btn btn-expense" data-add="expense">− Dodaj wydatek</button>
       </div>
 
+      <div id="backup-reminder" class="card reminder" hidden></div>
       <div id="events-reminder" class="card reminder reminder-events" hidden></div>
       <div id="bills-reminder" class="card reminder" hidden></div>
 
@@ -61,6 +65,8 @@
         <div id="forecast" class="forecast"></div>
         <ul id="insights-list" class="insights-list"></ul>
       </div>
+
+      <div id="onboarding" class="card onboarding" hidden></div>
 
       <div class="card">
         <h2>Przychody i wydatki – 12 miesięcy</h2>
@@ -89,9 +95,25 @@
           <button type="button" data-kind="expense" class="active" role="radio" aria-checked="true">− Wydatek</button>
           <button type="button" data-kind="income" role="radio" aria-checked="false">+ Przychód</button>
         </div>
-        <label>Kwota (zł)
-          <input name="amount" class="amount-input" type="text" inputmode="decimal" placeholder="0,00" required>
-        </label>
+        <div id="recent-chips" class="chips recent" hidden></div>
+        <div class="amount-row">
+          <label>Kwota
+            <input name="amount" class="amount-input" type="text" inputmode="decimal" placeholder="0,00" required>
+          </label>
+          <label>Waluta
+            <select name="currency">
+              <option value="PLN" selected>zł</option><option>EUR</option><option>USD</option><option>GBP</option>
+              <option>CHF</option><option>CZK</option><option>NOK</option><option>SEK</option><option>DKK</option>
+              <option>HUF</option><option>UAH</option>
+            </select>
+          </label>
+        </div>
+        <div id="fx-box" class="fx-box" hidden>
+          <span id="fx-info"></span>
+          <label class="fx-manual" hidden>Kurs (zł za 1 jednostkę)
+            <input name="rate" type="text" inputmode="decimal" placeholder="np. 4,30">
+          </label>
+        </div>
         <label>Opis
           <input name="description" placeholder="np. Orlen, Biedronka, rachunek Tauron" maxlength="255">
         </label>
@@ -106,25 +128,6 @@
         <button class="btn" type="submit" id="tx-submit">Zapisz wydatek</button>
       </form>
 
-      <form id="import-form" class="card form">
-        <h2>Import z CSV</h2>
-        <p class="muted">Kolumny: <code>date;amount;category;description</code>, opcjonalnie
-          <code>type</code> (<code>wydatek</code>/<code>przychód</code>).</p>
-        <input name="file" type="file" accept=".csv,text/csv" required>
-        <button class="btn btn-secondary" type="submit">Importuj</button>
-        <div id="import-result" class="muted"></div>
-      </form>
-
-      <div class="card form">
-        <h2>Kopia zapasowa</h2>
-        <p class="muted local-only" hidden>Dane są zapisane tylko na tym telefonie, w przeglądarce.
-          Wyczyszczenie danych Chrome je usunie – rób czasem kopię.</p>
-        <button id="export-csv" class="btn btn-secondary" type="button">Eksportuj do CSV</button>
-        <button id="backup-save" class="btn btn-secondary local-only" type="button" hidden>Zapisz pełną kopię</button>
-        <label class="btn btn-secondary local-only file-btn" hidden>Przywróć kopię z pliku
-          <input id="backup-load" type="file" accept=".json,application/json" hidden>
-        </label>
-      </div>
     </section>
 
     <!-- STAŁE OPŁATY -->
@@ -240,21 +243,56 @@
 
     <!-- HISTORIA -->
     <section id="view-historia" class="view" hidden>
-      <div class="periods" aria-label="Rodzaj">
-        <button data-filter="all" class="active">Wszystko</button>
-        <button data-filter="expense">Wydatki</button>
-        <button data-filter="income">Przychody</button>
+      <div class="month-nav card">
+        <button id="hist-prev" class="icon-btn" aria-label="Poprzedni miesiąc">‹</button>
+        <div class="month-nav-center">
+          <strong id="hist-month"></strong>
+          <span id="hist-summary" class="muted"></span>
+        </div>
+        <button id="hist-next" class="icon-btn" aria-label="Następny miesiąc">›</button>
+      </div>
+      <div class="hist-tools">
+        <input id="hist-search" type="search" placeholder="🔍 Szukaj (opis, kategoria)" maxlength="100" autocomplete="off">
+        <div class="periods" aria-label="Rodzaj">
+          <button data-filter="all" class="active">Wszystko</button>
+          <button data-filter="expense">Wydatki</button>
+          <button data-filter="income">Przychody</button>
+          <button id="hist-cat-chip" class="cat-chip" hidden></button>
+        </div>
       </div>
       <div class="card">
-        <ul id="history-list" class="list"></ul>
-        <button id="load-more" class="btn btn-secondary" hidden>Pokaż więcej</button>
+        <div id="history-list" class="history"></div>
       </div>
     </section>
 
-    <!-- BUDŻETY -->
-    <section id="view-budzety" class="view" hidden>
+    <!-- PLAN: cele i limity -->
+    <section id="view-plan" class="view" hidden>
       <div class="card">
-        <h2>Limity wydatków – <span id="budget-month"></span></h2>
+        <h2>🐷 Cele oszczędnościowe</h2>
+        <div id="goal-list"></div>
+      </div>
+      <form id="goal-form" class="card form" autocomplete="off">
+        <h2>Nowy cel</h2>
+        <div id="goal-presets" class="chips"></div>
+        <label>Na co?
+          <input name="name" placeholder="np. Wakacje, Poduszka finansowa" maxlength="100" required>
+        </label>
+        <div class="row">
+          <label>Kwota celu (zł)
+            <input name="target" type="text" inputmode="decimal" required>
+          </label>
+          <label>Do kiedy (opcjonalnie)
+            <input name="deadline" type="date">
+          </label>
+        </div>
+        <label>Już odłożone (zł)
+          <input name="saved" type="text" inputmode="decimal" placeholder="0">
+        </label>
+        <button class="btn" type="submit">Dodaj cel</button>
+      </form>
+
+      <div class="card">
+        <h2>🎯 Limity wydatków – <span id="budget-month"></span></h2>
         <div id="budget-list"></div>
       </div>
       <form id="budget-form" class="card form" autocomplete="off">
@@ -268,6 +306,50 @@
         <button class="btn" type="submit">Zapisz limit</button>
       </form>
     </section>
+
+    <!-- USTAWIENIA -->
+    <section id="view-ustawienia" class="view" hidden>
+      <div class="card form">
+        <h2>💾 Kopia zapasowa</h2>
+        <p class="muted local-only" hidden>Dane są zapisane tylko na tym telefonie. Wyczyszczenie danych
+          Chrome albo zmiana telefonu je usunie – zapisuj kopię co jakiś czas (np. na Dysk Google).</p>
+        <p id="backup-last" class="muted local-only" hidden></p>
+        <button id="backup-save" class="btn local-only" type="button" hidden>Zapisz pełną kopię</button>
+        <label class="btn btn-secondary local-only file-btn" hidden>Przywróć kopię z pliku
+          <input id="backup-load" type="file" accept=".json,application/json" hidden>
+        </label>
+      </div>
+
+      <div class="card form">
+        <h2>🏷️ Kategorie</h2>
+        <p class="muted">Stuknij kategorię, żeby zmienić jej nazwę albo połączyć z inną (np. po literówce).</p>
+        <ul id="category-admin" class="list"></ul>
+      </div>
+
+      <div class="card form">
+        <h2>📤 Eksport i import</h2>
+        <button id="export-csv" class="btn btn-secondary" type="button">Eksportuj do CSV (Excel)</button>
+        <form id="import-form" class="form">
+          <p class="muted">Import: kolumny <code>date;amount;category;description</code>, opcjonalnie
+            <code>type</code> (<code>wydatek</code>/<code>przychód</code>).</p>
+          <input name="file" type="file" accept=".csv,text/csv" required>
+          <button class="btn btn-secondary" type="submit">Importuj CSV</button>
+          <div id="import-result" class="muted"></div>
+        </form>
+      </div>
+
+      <div class="card form">
+        <h2>✨ Asystent AI</h2>
+        <p class="muted">Klucz API i wybór modelu.</p>
+        <button id="ai-settings-open" class="btn btn-secondary" type="button">Ustawienia asystenta</button>
+      </div>
+
+      <div class="card">
+        <h2>ℹ️ O aplikacji</h2>
+        <p class="muted">Budżet domowy 3.0 · działa bez internetu · kursy walut: NBP ·
+          asystent: Claude (Anthropic)</p>
+      </div>
+    </section>
   </main>
 
   <datalist id="expense-categories"></datalist>
@@ -279,7 +361,7 @@
     <button data-view="oplaty"><span class="ico">🧾</span>Opłaty</button>
     <button data-view="kalendarz"><span class="ico">📅</span>Kalendarz<span id="cal-badge" class="badge" hidden></span></button>
     <button data-view="historia"><span class="ico">📋</span>Historia</button>
-    <button data-view="budzety"><span class="ico">🎯</span>Limity</button>
+    <button data-view="plan"><span class="ico">🎯</span>Plan</button>
   </nav>
 
   <!-- Okno: zapłata stałej opłaty / edycja -->

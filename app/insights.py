@@ -106,6 +106,9 @@ def compute_insights(db: sqlite3.Connection, today: date) -> dict:
         "projected_income": projected_income / 100,
         "projected_expenses": projected_expenses / 100,
         "projected_balance": (projected_income - projected_expenses) / 100,
+        # Ile można wydawać dziennie do końca miesiąca, żeby nie zabrakło na stałe opłaty.
+        "safe_daily": (half_up(max(0, projected_income - expenses_so_far - planned_exp) / (dim - day + 1)) / 100
+                       if projected_income > 0 else None),
     }
 
     insights: list[dict] = []

@@ -203,7 +203,8 @@ main { max-width: 640px; margin: 0 auto; padding: 12px 16px; }
 /* Stałe opłaty */
 .month-nav { display: flex; align-items: center; gap: 8px; padding: 10px 8px; }
 .month-nav-center { flex: 1; text-align: center; display: flex; flex-direction: column; }
-.month-nav-center strong { font-size: 17px; text-transform: capitalize; }
+.month-nav-center strong { font-size: 17px; }
+.month-nav-center strong::first-letter { text-transform: uppercase; }
 .icon-btn { border: 0; background: none; color: var(--text-2); font-size: 22px; padding: 4px 10px; line-height: 1; }
 .bill-ico { font-size: 22px; width: 30px; text-align: center; flex: none; }
 .bills li.paid .title { color: var(--text-2); }
@@ -310,3 +311,57 @@ body.ai-open { overflow: hidden; }
 .ai-confirm dt { color: var(--muted); }
 .ai-confirm dd { margin: 0; font-weight: 600; }
 .dialog { z-index: 30; }
+
+/* ---------- wersja 3: ustawienia, historia, cele, waluty ---------- */
+.topbar-actions { display: flex; align-items: center; gap: 4px; }
+.topbar-icon { font-size: 22px; color: var(--text-2); }
+.toast { display: flex; align-items: center; gap: 14px; }
+.toast-action { border: 0; background: none; color: var(--accent-bg); font: inherit; font-weight: 700; padding: 0; }
+
+.onboarding { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.onb-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.onb-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.onb-list button { border: 0; background: none; color: var(--text); font: inherit; font-size: 15px; padding: 7px 0; text-align: left; width: 100%; }
+.onb-list li.ok button { color: var(--muted); text-decoration: line-through; }
+
+.safe-daily { display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+.safe-daily strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.safe-daily small { font-size: 13px; color: var(--muted); font-weight: 400; }
+.hbar { cursor: pointer; }
+
+.amount-row { display: grid; grid-template-columns: 1fr 92px; gap: 10px; align-items: end; }
+.fx-box { font-size: 14px; color: var(--text-2); background: var(--surface-2); border-radius: 10px; padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 8px; margin-top: -4px; }
+.recent { margin-top: 0; align-items: center; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+  margin-right: -16px; padding-right: 16px; }
+.recent::-webkit-scrollbar { display: none; }
+.recent button { flex: none; }
+.amount-row select { font-size: 20px; height: 62px; }
+.cat-name.long { font-size: 9.5px; letter-spacing: -0.2px; }
+.recent button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chips-label { font-size: 13px; color: var(--muted); }
+
+.hist-tools { display: flex; flex-direction: column; gap: 8px; }
+.hist-tools input[type="search"] { font: inherit; font-size: 16px; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px; padding: 11px 14px; width: 100%; }
+.cat-chip { background: var(--accent-bg) !important; color: #fff !important; border-color: var(--accent-bg) !important; }
+.history { display: flex; flex-direction: column; }
+.hist-day + .hist-day { margin-top: 10px; }
+.hist-day-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted);
+  padding: 4px 0 6px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+.hist-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 0; border: 0; background: none;
+  color: var(--text); font: inherit; text-align: left; border-bottom: 1px solid var(--grid); }
+.hist-item:last-child { border-bottom: 0; }
+.hist-item .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hist-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-item .sub { font-size: 13px; color: var(--muted); }
+.hist-item .amount { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#category-admin li { padding: 0; }
+
+.goal { padding: 12px 0; border-top: 1px solid var(--grid); }
+.goal:first-child { border-top: 0; padding-top: 0; }
+.goal-bar > div { background: var(--income); }
+.goal.done .goal-bar > div { background: var(--good); }
+.goal-need { font-size: 14px; color: var(--text-2); margin: 2px 0 8px; }
+.goal-actions { display: flex; gap: 8px; align-items: center; }

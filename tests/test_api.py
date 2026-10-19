@@ -436,3 +436,62 @@ def test_suggest_category(client):
     assert s("Kebab u Aliego") == {"category": None, "source": None}
     add(client, 25, "jedzenie", "2026-10-03", "Kebab u Aliego")
     assert s("kebab na mieście") == {"category": "jedzenie", "source": "history"}
+
+
+# ---------- wyszukiwanie, bezpieczna kwota, cele, kategorie ----------
+
+def test_search_q_is_case_and_polish_insensitive(client):
+    add(client, 10, "jedzenie", "2026-10-01", "Żabka Łódź")
+    add(client, 20, "paliwo", "2026-10-02", "Orlen")
+    found = lambda q: [e["description"] for e in client.get("/expenses", params={"q": q}).json()]  # noqa: E731
+    assert found("żABKA") == ["Żabka Łódź"]
+    assert found("łÓdź") == ["Żabka Łódź"]
+    assert found("PALIWO") == ["Orlen"]  # szuka też w kategorii
+    assert found("xyz") == []
+
+
+def test_forecast_safe_daily(client):
+    today = date.today()
+    dim = calendar.monthrange(today.year, today.month)[1]
+    assert client.get("/analytics/insights").json()["forecast"]["safe_daily"] is None
+    add_income(client, 3000, "wynagrodzenie", today.replace(day=1).isoformat())
+    add(client, 500, "jedzenie", today.isoformat())
+    client.post("/recurring", json={"name": "Czynsz", "category": "czynsz", "amount": 1000, "day": 28})
+    f = client.get("/analytics/insights").json()["forecast"]
+    assert f["safe_daily"] == int(150000 / (dim - today.day + 1) + 0.5) / 100
+
+
+def test_goals(client):
+    in3 = date.today().replace(day=1)
+    y, m = divmod(in3.month - 1 + 2, 12)
+    deadline = date(in3.year + y, m + 1, 15).isoformat()  # 3 miesiące licząc bieżący
+    g = client.post("/goals", json={"name": " Wakacje ", "target": 3000, "saved": 600, "deadline": deadline}).json()
+    assert (g["name"], g["percent"], g["remaining"], g["monthly_needed"], g["done"]) == ("Wakacje", 20, 2400, 800, False)
+    assert client.post(f"/goals/{g['id']}/deposit", json={"amount": 2400}).json()["done"] is True
+    assert client.post(f"/goals/{g['id']}/deposit", json={"amount": -5000}).status_code == 422
+    assert client.post(f"/goals/{g['id']}/deposit", json={"amount": 0}).status_code == 422
+    w = client.post(f"/goals/{g['id']}/deposit", json={"amount": -1000}).json()
+    assert w["saved"] == 2000 and w["percent"] == 66
+    nod = client.patch(f"/goals/{g['id']}", json={"deadline": None, "target": 4000}).json()
+    assert nod["deadline"] is None and nod["monthly_needed"] is None and nod["target"] == 4000
+    client.post("/goals", json={"name": "Auto", "target": 100, "saved": 100})
+    assert [x["name"] for x in client.get("/goals").json()] == ["Wakacje", "Auto"]  # zrealizowane na końcu
+    assert client.delete(f"/goals/{g['id']}").status_code == 204
+    assert client.post("/goals", json={"name": "", "target": 1}).status_code == 422
+
+
+def test_categories_rename_and_merge(client):
+    add(client, 10, "jedzneie", "2026-10-01")  # literówka
+    add(client, 20, "jedzneie", "2026-10-02")
+    add(client, 30, "jedzenie", "2026-10-03")
+    client.put("/budgets/jedzneie", json={"monthly_limit": 100})
+    client.put("/budgets/jedzenie", json={"monthly_limit": 500})
+    client.post("/recurring", json={"name": "Catering", "category": "jedzneie", "amount": 50, "day": 1})
+    cats = client.get("/categories").json()
+    assert cats[0] == {"kind": "expense", "category": "jedzneie", "count": 2, "total": 30.0}
+    r = client.post("/categories/rename", json={"kind": "expense", "from": "Jedzneie", "to": "jedzenie"})
+    assert r.json() == {"updated": 2}
+    assert client.get("/categories").json() == [{"kind": "expense", "category": "jedzenie", "count": 3, "total": 60.0}]
+    assert client.get("/budgets").json() == [{"category": "jedzenie", "monthly_limit": 500.0}]
+    assert client.get("/recurring").json()[0]["category"] == "jedzenie"
+    assert client.post("/categories/rename", json={"kind": "expense", "from": "a", "to": "A"}).status_code == 422

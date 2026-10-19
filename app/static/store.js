@@ -15,15 +15,18 @@ const LocalApi = (() => {
       incomes: Array.isArray(data?.incomes) ? data.incomes : [],
       recurring: Array.isArray(data?.recurring) ? data.recurring : [],
       events: Array.isArray(data?.events) ? data.events : [],
+      goals: Array.isArray(data?.goals) ? data.goals : [],
       budgets: data?.budgets && typeof data.budgets === "object" ? data.budgets : {},
       nextId: data?.nextId || 1,
       nextRecurringId: data?.nextRecurringId || 1,
       nextEventId: data?.nextEventId || 1,
+      nextGoalId: data?.nextGoalId || 1,
     };
     const ids = [...db.expenses, ...db.incomes].map((e) => e.id + 1);
     db.nextId = Math.max(db.nextId, 1, ...ids);
     db.nextRecurringId = Math.max(db.nextRecurringId, 1, ...db.recurring.map((r) => r.id + 1));
     db.nextEventId = Math.max(db.nextEventId, 1, ...db.events.map((e) => e.id + 1));
+    db.nextGoalId = Math.max(db.nextGoalId, 1, ...db.goals.map((g) => g.id + 1));
     return db;
   }
 
@@ -120,8 +123,10 @@ const LocalApi = (() => {
     const cat = withCategory ? q.get("category")?.trim().toLowerCase() : null;
     const from = q.get("date_from");
     const to = q.get("date_to");
+    const text = withCategory ? (q.get("q") || "").trim().toLowerCase() : "";
     return rows.filter(
-      (e) => (!from || e.date >= from) && (!to || e.date <= to) && (!cat || e.category === cat)
+      (e) => (!from || e.date >= from) && (!to || e.date <= to) && (!cat || e.category === cat) &&
+        (!text || `${e.description} ${e.category}`.toLowerCase().includes(text))
     );
   }
   const rowsOf = (q) => db[TABLES[validKind(q.get("kind") ?? undefined)]];
@@ -373,6 +378,8 @@ const LocalApi = (() => {
       projected_income: projectedIncome / 100,
       projected_expenses: projectedExpenses / 100,
       projected_balance: (projectedIncome - projectedExpenses) / 100,
+      safe_daily: projectedIncome > 0
+        ? halfUp(Math.max(0, projectedIncome - expensesSoFar - plannedExp) / (dim - day + 1)) / 100 : null,
     };
 
     const insights = [];
@@ -543,6 +550,29 @@ const LocalApi = (() => {
       }
     }
     return { category: null, source: null };
+  }
+
+  // ---------- cele (jak app/routers/goals.py) ----------
+  function toGoal(g) {
+    const remaining = Math.max(0, g.target_cents - g.saved_cents);
+    let monthly = null;
+    if (g.deadline && remaining) {
+      const [ty, tm] = todayIso().split("-").map(Number);
+      const [dy, dm] = g.deadline.split("-").map(Number);
+      const months = Math.max(1, (dy - ty) * 12 + dm - tm + 1);
+      monthly = Math.floor(remaining / months + 0.5) / 100;
+    }
+    return {
+      id: g.id, name: g.name, target: fromCents(g.target_cents), saved: fromCents(g.saved_cents),
+      deadline: g.deadline, percent: Math.min(100, Math.floor((g.saved_cents * 100) / g.target_cents)),
+      remaining: fromCents(remaining), monthly_needed: monthly, done: g.saved_cents >= g.target_cents,
+    };
+  }
+
+  function goalOr404(id) {
+    const g = db.goals.find((x) => x.id === +id);
+    if (!g) throw new HttpError(404, "Nie znaleziono celu");
+    return g;
   }
 
   // ---------- trasy ----------
@@ -817,6 +847,92 @@ const LocalApi = (() => {
       ev.done_until = previousBefore(ev.date, ev.repeat, ev.done_until);
       save();
       return toEvent(ev);
+    }],
+
+    // --- cele oszczędnościowe (jak app/routers/goals.py) ---
+    ["GET", /^\/goals$/, () => db.goals.map(toGoal).sort((a, b) =>
+      (a.done - b.done) || cmp(a.deadline || "9999-12-31", b.deadline || "9999-12-31") || cmp(a.name, b.name))],
+
+    ["POST", /^\/goals$/, (q, body) => {
+      const name = String(body.name ?? "").trim();
+      if (!name || name.length > 100) throw new HttpError(422, "nazwa: od 1 do 100 znaków");
+      const g = {
+        id: db.nextGoalId++,
+        name,
+        target_cents: toCents(body.target, "target"),
+        saved_cents: body.saved != null && Number(body.saved) !== 0 ? toCents(body.saved, "saved") : 0,
+        deadline: body.deadline ? validDate(body.deadline) : null,
+      };
+      db.goals.push(g);
+      save();
+      return toGoal(g);
+    }],
+
+    ["PATCH", /^\/goals\/(\d+)$/, (q, body, [id]) => {
+      const g = goalOr404(id);
+      const next = { ...g };
+      if (body.name) {
+        next.name = String(body.name).trim();
+        if (!next.name || next.name.length > 100) throw new HttpError(422, "nazwa: od 1 do 100 znaków");
+      }
+      if (body.target != null) next.target_cents = toCents(body.target, "target");
+      if ("deadline" in body) next.deadline = body.deadline ? validDate(body.deadline) : null;
+      Object.assign(g, next);
+      save();
+      return toGoal(g);
+    }],
+
+    ["POST", /^\/goals\/(\d+)\/deposit$/, (q, body, [id]) => {
+      const g = goalOr404(id);
+      const s = String(body.amount ?? "").trim().replace(",", ".");
+      if (!/^-?\d+(\.\d{1,2})?$/.test(s)) throw new HttpError(422, "amount: maks. 2 miejsca po przecinku");
+      const amount = Math.round(Number(s) * 100);
+      if (amount === 0) throw new HttpError(422, "Kwota nie może być zerowa");
+      if (g.saved_cents + amount < 0) throw new HttpError(422, "Nie można wypłacić więcej, niż odłożono");
+      g.saved_cents += amount;
+      save();
+      return toGoal(g);
+    }],
+
+    ["DELETE", /^\/goals\/(\d+)$/, (q, body, [id]) => {
+      const g = goalOr404(id);
+      db.goals = db.goals.filter((x) => x !== g);
+      save();
+      return null;
+    }],
+
+    // --- kategorie (jak app/routers/categories.py) ---
+    ["GET", /^\/categories$/, () => {
+      const out = [];
+      for (const [kind, table] of Object.entries(TABLES)) {
+        const stats = {};
+        for (const e of db[table]) {
+          const s = (stats[e.category] ||= { count: 0, cents: 0 });
+          s.count++;
+          s.cents += e.amount_cents;
+        }
+        Object.keys(stats).sort((a, b) => stats[b].count - stats[a].count || cmp(a, b))
+          .forEach((c) => out.push({ kind, category: c, count: stats[c].count, total: fromCents(stats[c].cents) }));
+      }
+      return out;
+    }],
+
+    ["POST", /^\/categories\/rename$/, (q, body) => {
+      const kind = validKind(body.kind);
+      const from = category(body.from), to = category(body.to);
+      if (from === to) throw new HttpError(422, "Nowa nazwa jest taka sama jak stara");
+      let updated = 0;
+      db[TABLES[kind]].forEach((e) => { if (e.category === from) { e.category = to; updated++; } });
+      db.recurring.forEach((r) => { if (r.category === from && r.kind === kind) r.category = to; });
+      if (kind === "expense") {
+        db.events.forEach((e) => { if (e.category === from) e.category = to; });
+        if (from in db.budgets) {
+          if (!(to in db.budgets)) db.budgets[to] = db.budgets[from];
+          delete db.budgets[from];
+        }
+      }
+      save();
+      return { updated };
     }],
 
     // --- budżety ---
