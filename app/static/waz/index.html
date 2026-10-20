@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0f130d">
+<title>Wąż</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root {
+    --case: #0f130d;
+    --case-2: #1a2017;
+    --key: #262d22;
+    --key-press: #3a4434;
+    --key-text: #d9e4c6;
+    --lcd: #a8c07c;
+    --lcd-dark: #93ab68;
+    --px: #1f2b19;
+    --muted: #8d9a7c;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--case); color: var(--key-text); }
+  body {
+    font-family: "Courier New", ui-monospace, monospace;
+    display: flex; flex-direction: column;
+    height: 100dvh; overflow: hidden;
+    user-select: none; -webkit-user-select: none; touch-action: none;
+    padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  /* --- ekran LCD --- */
+  .screen {
+    flex: 1; min-height: 0; margin-top: 12px;
+    background: var(--lcd); color: var(--px);
+    border-radius: 14px; padding: 10px;
+    box-shadow: inset 0 0 0 3px #7f965a, inset 0 0 26px rgba(0,0,0,.18);
+    display: flex; flex-direction: column;
+  }
+  .hud { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 20px; letter-spacing: 1px; padding: 0 4px 8px; }
+  .hud .rec { font-size: 15px; opacity: .8; }
+  .bonus-bar { height: 6px; margin: -2px 4px 8px; border: 1px solid var(--px); opacity: 0; transition: opacity .15s; }
+  .bonus-bar.on { opacity: 1; }
+  .bonus-bar i { display: block; height: 100%; background: var(--px); }
+  .board-wrap { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; outline: 3px solid var(--px); outline-offset: 2px; }
+  canvas.wrap { outline-style: dashed; }
+
+  /* --- nakładki: menu, pauza, koniec gry --- */
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px; text-align: center;
+    background: rgba(168,192,124,.94); font-weight: 700; padding: 12px;
+  }
+  .overlay[hidden] { display: none; }
+  .title { font-size: 56px; letter-spacing: 8px; line-height: 1; margin: 0; }
+  .big { font-size: 30px; letter-spacing: 3px; margin: 0; }
+  .line { font-size: 17px; margin: 0; }
+  .small { font-size: 14px; font-weight: 400; max-width: 260px; margin: 0; }
+  .opt { display: flex; align-items: center; gap: 10px; font-size: 18px; }
+  .opt .lbl { width: 110px; text-align: right; }
+  .lcd-btn {
+    border: 2px solid var(--px); background: transparent; color: var(--px);
+    border-radius: 6px; padding: 4px 12px; font-weight: 700; font-size: 18px; min-width: 42px;
+  }
+  .lcd-btn.val { min-width: 76px; }
+  .lcd-btn:active, .lcd-btn.primary { background: var(--px); color: var(--lcd); }
+  .lcd-btn.primary { font-size: 22px; padding: 8px 30px; letter-spacing: 3px; margin-top: 4px; }
+
+  /* --- klawiatura --- */
+  .pad {
+    display: grid; grid-template-columns: repeat(3, 76px); grid-template-rows: repeat(3, 64px);
+    gap: 8px; justify-content: center; padding: 14px 0 12px;
+  }
+  .key {
+    border: none; border-radius: 16px; background: var(--key);
+    box-shadow: 0 3px 0 #070906; color: var(--key-text);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .key.pressed, .key:active { background: var(--key-press); transform: translateY(2px); box-shadow: 0 1px 0 #070906; }
+  .key svg { width: 30px; height: 30px; fill: currentColor; }
+  .key.mid { border-radius: 50%; background: var(--case-2); font-size: 15px; font-weight: 700; }
+  .up { grid-area: 1 / 2; } .left { grid-area: 2 / 1; } .mid { grid-area: 2 / 2; }
+  .right { grid-area: 2 / 3; } .down { grid-area: 3 / 2; }
+  @media (max-height: 640px) { .pad { grid-template-rows: repeat(3, 54px); padding: 10px 0 8px; } }
+</style>
+</head>
+<body>
+  <div class="screen">
+    <div class="hud"><span id="score">0000</span><span class="rec" id="record">REKORD 0000</span></div>
+    <div class="bonus-bar" id="bonus-bar"><i></i></div>
+    <div class="board-wrap" id="wrap">
+      <canvas id="board" aria-label="Plansza"></canvas>
+
+      <div class="overlay" id="menu">
+        <h1 class="title">WĄŻ</h1>
+        <p class="line" id="menu-record"></p>
+        <div class="opt"><span class="lbl">Prędkość</span>
+          <button class="lcd-btn" data-act="slower" aria-label="Wolniej">−</button>
+          <span id="level" style="width:24px">5</span>
+          <button class="lcd-btn" data-act="faster" aria-label="Szybciej">+</button>
+        </div>
+        <div class="opt"><span class="lbl">Ściany</span><button class="lcd-btn val" data-act="walls" id="walls-btn">TAK</button></div>
+        <div class="opt"><span class="lbl">Dźwięk</span><button class="lcd-btn val" data-act="sound" id="sound-btn">TAK</button></div>
+        <button class="lcd-btn primary" data-act="start">GRAJ</button>
+        <p class="small">Steruj strzałkami na dole albo przesuwaj palcem po ekranie. Zbieraj kółka – wąż rośnie. Nie gryź własnego ogona!</p>
+      </div>
+
+      <div class="overlay" id="paused" hidden>
+        <p class="big">PAUZA</p>
+        <button class="lcd-btn primary" data-act="resume">DALEJ</button>
+        <button class="lcd-btn" data-act="menu">MENU</button>
+      </div>
+
+      <div class="overlay" id="over" hidden>
+        <p class="big" id="over-title">KONIEC GRY</p>
+        <p class="line" id="over-score"></p>
+        <p class="line" id="over-record"></p>
+        <button class="lcd-btn primary" data-act="start">JESZCZE RAZ</button>
+        <button class="lcd-btn" data-act="menu">MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pad">
+    <button class="key up" data-dir="up" aria-label="Góra"><svg viewBox="0 0 24 24"><path d="M12 6l7 9H5z"/></svg></button>
+    <button class="key left" data-dir="left" aria-label="Lewo"><svg viewBox="0 0 24 24"><path d="M6 12l9-7v14z"/></svg></button>
+    <button class="key mid" data-act="pause" aria-label="Pauza" id="mid">II</button>
+    <button class="key right" data-dir="right" aria-label="Prawo"><svg viewBox="0 0 24 24"><path d="M18 12l-9 7V5z"/></svg></button>
+    <button class="key down" data-dir="down" aria-label="Dół"><svg viewBox="0 0 24 24"><path d="M12 18l-7-9h14z"/></svg></button>
+  </div>
+
+<script>
+"use strict";
+const COLS = 20;
+let ROWS = 20;   // liczba wierszy dopasowana do wysokości ekranu (ustalana przed grą)
+const DIRS = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+const COLOR = { px: "#1f2b19", ghost: "rgba(31,43,25,0.07)" };
+
+// Zapis rekordu i ustawień: w aplikacji Android przez most (pewniejsze niż localStorage na file://).
+const store = {
+  get(k) {
+    try { return window.AndroidGame ? AndroidGame.get(k) : localStorage.getItem(k); } catch { return null; }
+  },
+  set(k, v) {
+    try { window.AndroidGame ? AndroidGame.set(k, String(v)) : localStorage.setItem(k, String(v)); } catch {}
+  },
+};
+
+const $ = (id) => document.getElementById(id);
+const canvas = $("board"), ctx = canvas.getContext("2d");
+
+const settings = Object.assign({ level: 5, walls: true, sound: true },
+  JSON.parse(store.get("waz-settings") || "{}"));
+const recordKey = () => `waz-record-${settings.walls ? "sciany" : "bez"}`;
+const record = () => Number(store.get(recordKey()) || 0);
+
+let state = "menu";            // menu | play | paused | dying | over
+let snake, dir, queue, food, bonus, score, eaten, acc, last, dieAt, cell = 16;
+
+// ---------- dźwięk i wibracje ----------
+let audio;
+function beep(freq, ms, delay = 0) {
+  if (!settings.sound) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const t = audio.currentTime + delay / 1000;
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = "square"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+    o.connect(g).connect(audio.destination); o.start(t); o.stop(t + ms / 1000);
+  } catch {}
+}
+function buzz(ms) {
+  try { window.AndroidGame ? AndroidGame.vibrate(ms) : navigator.vibrate && navigator.vibrate(ms); } catch {}
+}
+
+// ---------- logika gry ----------
+const stepMs = () => 300 - settings.level * 26;   // poziom 1: 274 ms … poziom 9: 66 ms
+const pad4 = (n) => String(n).padStart(4, "0");
+
+function freeCell() {
+  const taken = new Set(snake.map((s) => s.y * COLS + s.x));
+  if (food) taken.add(food.y * COLS + food.x);
+  if (bonus) taken.add(bonus.y * COLS + bonus.x);
+  const free = [];
+  for (let i = 0; i < COLS * ROWS; i++) if (!taken.has(i)) free.push(i);
+  if (!free.length) return null;
+  const i = free[Math.floor(Math.random() * free.length)];
+  return { x: i % COLS, y: Math.floor(i / COLS) };
+}
+
+function start() {
+  snake = null; resize();
+  const y = Math.floor(ROWS / 2);
+  snake = [3, 2, 1, 0].map((x) => ({ x: x + 4, y }));
+  dir = DIRS.right; queue = []; food = null; bonus = null; score = 0; eaten = 0; acc = 0;
+  food = freeCell();
+  setState("play");
+  updateHud();
+}
+
+function turn(name) {
+  if (state === "paused") resume();
+  if (state !== "play") return;
+  const d = DIRS[name], prev = queue.length ? queue[queue.length - 1] : dir;
+  if (d === prev || (d.x === -prev.x && d.y === -prev.y)) return;   // bez zawracania w miejscu
+  if (queue.length < 3) queue.push(d);
+}
+
+function step() {
+  if (queue.length) dir = queue.shift();
+  let x = snake[0].x + dir.x, y = snake[0].y + dir.y;
+  if (settings.walls) {
+    if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return die();
+  } else {
+    x = (x + COLS) % COLS; y = (y + ROWS) % ROWS;
+  }
+  const eats = food && x === food.x && y === food.y;
+  // Ogon zwalnia pole w tym samym ruchu, chyba że wąż właśnie rośnie.
+  const body = eats ? snake : snake.slice(0, -1);
+  if (body.some((s) => s.x === x && s.y === y)) return die();
+
+  snake.unshift({ x, y });
+  if (eats) {
+    score += settings.level; eaten++;
+    beep(880, 60); buzz(15);
+    food = freeCell();
+    if (!food) return win();
+    if (eaten % 5 === 0 && !bonus) {
+      const at = freeCell();
+      if (at) bonus = { ...at, ttl: 40, max: 40 };
+    }
+  } else {
+    snake.pop();
+  }
+  if (bonus) {
+    if (x === bonus.x && y === bonus.y) {
+      score += settings.level * 5 + bonus.ttl;
+      beep(660, 70); beep(990, 90, 80); buzz(30);
+      bonus = null;
+    } else if (--bonus.ttl <= 0) {
+      bonus = null;
+    }
+  }
+  updateHud();
+}
+
+function die() {
+  setState("dying"); dieAt = performance.now();
+  beep(300, 150); beep(200, 200, 160); beep(120, 350, 380); buzz(250);
+}
+function win() { finish(true); }
+
+function finish(won = false) {
+  const prev = record(), isRecord = score > prev;
+  if (isRecord) store.set(recordKey(), score);
+  $("over-title").textContent = won ? "WYGRANA!" : "KONIEC GRY";
+  $("over-score").textContent = `WYNIK ${pad4(score)}`;
+  $("over-record").textContent = isRecord && score > 0 ? "NOWY REKORD!" : `REKORD ${pad4(Math.max(prev, score))}`;
+  setState("over");
+  updateHud();
+}
+
+function pause() { if (state === "play") setState("paused"); }
+function resume() { if (state === "paused") { last = performance.now(); setState("play"); } }
+
+function setState(s) {
+  state = s;
+  updateHud();
+  $("menu").hidden = s !== "menu";
+  $("paused").hidden = s !== "paused";
+  $("over").hidden = s !== "over";
+  $("mid").textContent = s === "paused" ? "▶" : "II";
+  if (s === "menu") renderMenu();
+}
+
+function updateHud() {
+  $("score").textContent = pad4(score || 0);
+  $("record").textContent = `REKORD ${pad4(Math.max(record(), state === "over" ? 0 : score || 0))}`;
+  const bar = $("bonus-bar");
+  const showBonus = !!bonus && (state === "play" || state === "paused");
+  bar.classList.toggle("on", showBonus);
+  if (showBonus) bar.firstElementChild.style.width = `${(100 * bonus.ttl) / bonus.max}%`;
+}
+
+function renderMenu() {
+  $("level").textContent = settings.level;
+  $("walls-btn").textContent = settings.walls ? "TAK" : "NIE";
+  $("sound-btn").textContent = settings.sound ? "TAK" : "NIE";
+  $("menu-record").textContent = `REKORD ${pad4(record())}`;
+  canvas.classList.toggle("wrap", !settings.walls);
+  store.set("waz-settings", JSON.stringify(settings));
+  updateHud();
+}
+
+// ---------- rysowanie (styl starego ekranu LCD) ----------
+function resize() {
+  const wrap = $("wrap");
+  const w = wrap.clientWidth - 10, h = wrap.clientHeight - 10;
+  // Poza grą plansza wypełnia cały ekran; w trakcie gry zmienia się tylko wielkość pól.
+  if (!snake || state === "menu" || state === "over") {
+    ROWS = Math.max(16, Math.min(36, Math.floor(h / Math.floor(w / COLS))));
+  }
+  cell = Math.max(8, Math.floor(Math.min(w / COLS, h / ROWS)));
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = `${cell * COLS}px`; canvas.style.height = `${cell * ROWS}px`;
+  canvas.width = Math.round(cell * COLS * dpr); canvas.height = Math.round(cell * ROWS * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function block(x, y, inset = 1) {
+  ctx.fillRect(x * cell + inset, y * cell + inset, cell - 2 * inset, cell - 2 * inset);
+}
+
+function draw(now) {
+  ctx.clearRect(0, 0, cell * COLS, cell * ROWS);
+  // „Duchy” pikseli jak na starym wyświetlaczu.
+  ctx.fillStyle = COLOR.ghost;
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) block(x, y);
+
+  if (!snake) return;
+  ctx.fillStyle = COLOR.px;
+
+  if (food) {
+    ctx.beginPath();
+    ctx.arc((food.x + 0.5) * cell, (food.y + 0.5) * cell, cell * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (bonus && (bonus.ttl > 10 || Math.floor(now / 150) % 2)) {
+    const cx = (bonus.x + 0.5) * cell, cy = (bonus.y + 0.5) * cell, r = cell * 0.48;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r, cy);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // Przy przegranej wąż miga trzy razy.
+  const hidden = state === "dying" && Math.floor((now - dieAt) / 200) % 2 === 1;
+  if (!hidden) {
+    snake.forEach((s, i) => block(s.x, s.y, i === 0 ? 0 : 1));
+    // Oko na głowie.
+    const h = snake[0], e = Math.max(2, Math.round(cell / 6));
+    const ex = (h.x + 0.5 + dir.x * 0.2 - dir.y * 0.18) * cell - e / 2;
+    const ey = (h.y + 0.5 + dir.y * 0.2 + dir.x * 0.18) * cell - e / 2;
+    ctx.fillStyle = "#a8c07c";
+    ctx.fillRect(ex, ey, e, e);
+  }
+}
+
+function loop(now) {
+  if (state === "play") {
+    acc += Math.min(now - (last || now), 250);
+    while (state === "play" && acc >= stepMs()) { acc -= stepMs(); step(); }
+  } else if (state === "dying" && now - dieAt > 1250) {
+    finish();
+  }
+  last = now;
+  draw(now);
+  requestAnimationFrame(loop);
+}
+
+// ---------- sterowanie ----------
+const KEYS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
+               w: "up", s: "down", a: "left", d: "right" };
+document.addEventListener("keydown", (e) => {
+  if (KEYS[e.key]) { e.preventDefault(); turn(KEYS[e.key]); }
+  else if (e.key === " " || e.key === "p") state === "play" ? pause() : state === "paused" ? resume() : null;
+  else if (e.key === "Enter" && (state === "menu" || state === "over")) start();
+});
+
+document.querySelectorAll("[data-dir]").forEach((b) => {
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); b.classList.add("pressed"); turn(b.dataset.dir); });
+  ["pointerup", "pointerleave", "pointercancel"].forEach((t) => b.addEventListener(t, () => b.classList.remove("pressed")));
+});
+
+const ACTIONS = {
+  start, resume,
+  pause: () => (state === "play" ? pause() : resume()),
+  menu: () => setState("menu"),
+  slower: () => { settings.level = Math.max(1, settings.level - 1); renderMenu(); },
+  faster: () => { settings.level = Math.min(9, settings.level + 1); renderMenu(); },
+  walls: () => { settings.walls = !settings.walls; renderMenu(); },
+  sound: () => { settings.sound = !settings.sound; renderMenu(); if (settings.sound) beep(880, 60); },
+};
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]");
+  if (b) ACTIONS[b.dataset.act]();
+});
+
+// Przesuwanie palcem po ekranie gry (kilka skrętów w jednym ruchu palca).
+let touch = null;
+const screenEl = document.querySelector(".screen");
+screenEl.addEventListener("touchstart", (e) => {
+  const t = e.touches[0]; touch = { x: t.clientX, y: t.clientY };
+}, { passive: true });
+screenEl.addEventListener("touchmove", (e) => {
+  if (!touch || state !== "play") return;
+  const t = e.touches[0], dx = t.clientX - touch.x, dy = t.clientY - touch.y;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+  turn(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
+  touch = { x: t.clientX, y: t.clientY };
+}, { passive: true });
+screenEl.addEventListener("touchend", () => { touch = null; });
+
+// Przycisk „wstecz” w aplikacji Android: najpierw pauza / menu, dopiero potem wyjście.
+window.onAndroidBack = () => {
+  if (state === "play") { pause(); return true; }
+  if (state === "paused" || state === "over") { setState("menu"); return true; }
+  return false;
+};
+document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+window.addEventListener("resize", resize);
+
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+resize();
+setState("menu");
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

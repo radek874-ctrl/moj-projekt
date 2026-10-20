@@ -1,0 +1,59 @@
+# Buduje grę Wąż na Androida (APK) i publikuje ją w GitHub Releases pod stałym adresem:
+# https://github.com/radek874-ctrl/moj-projekt/releases/download/waz-latest/waz.apk
+name: Gra Wąż – Android (APK)
+
+on:
+  push:
+    branches: [ccr-fb1dc182-da1ttq]
+    paths: ["android-waz/**", "app/static/waz/**", ".github/workflows/android-waz.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-waz
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Budowa APK
+        working-directory: android-waz
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: gradle --no-daemon assembleRelease
+
+      - name: Przygotowanie pliku
+        run: cp android-waz/app/build/outputs/apk/release/app-release.apk waz.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: waz-apk
+          path: waz.apk
+
+      - name: Publikacja w Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="Gra Wąż na Androida (wersja 1.0.${{ github.run_number }}) – klasyczny wąż jak na starym telefonie, działa bez internetu.
+
+          Instalacja: pobierz waz.apk na telefonie, otwórz plik i zezwól na instalację z tego źródła."
+          if gh release view waz-latest >/dev/null 2>&1; then
+            gh release edit waz-latest --notes "$NOTES"
+          else
+            gh release create waz-latest --title "Wąż – Android" --notes "$NOTES" --target "${{ github.sha }}"
+          fi
+          gh release upload waz-latest waz.apk --clobber

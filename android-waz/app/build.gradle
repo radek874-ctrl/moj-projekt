@@ -1,0 +1,46 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Numer wersji z GitHub Actions, żeby nowsze APK instalowały się jako aktualizacja.
+def buildNumber = (System.getenv("VERSION_CODE") ?: "1") as Integer
+def keystorePassword = System.getenv("KEYSTORE_PASSWORD") ?: "budzet-test"
+
+android {
+    namespace 'pl.radek874.waz'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'pl.radek874.waz'
+        minSdk 29
+        targetSdk 34
+        versionCode buildNumber
+        versionName "1.0.${buildNumber}"
+    }
+
+    // Gra jest w APK (działa bez internetu) – ta sama, co w wersji z przeglądarki.
+    sourceSets {
+        main.assets.srcDirs = ['../../app/static/waz']
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('../../android/release.keystore')
+            storePassword keystorePassword
+            keyAlias 'budzet'
+            keyPassword keystorePassword
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

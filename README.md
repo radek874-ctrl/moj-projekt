@@ -268,3 +268,14 @@ tests/test_api.py
 ```
 
 Kwoty są przechowywane w groszach (liczby całkowite), co eliminuje błędy zaokrągleń.
+
+## Gra Wąż
+
+Klasyczna gra w węża jak na starym telefonie (ekran LCD, strzałki lub przesuwanie palcem,
+kółka do zbierania, bonusy, rekord, wybór prędkości i trybu ze ścianami lub bez).
+
+- W przeglądarce: https://radek874-ctrl.github.io/moj-projekt/waz/ (można dodać do ekranu głównego)
+- Android (APK, działa bez internetu): https://github.com/radek874-ctrl/moj-projekt/releases/download/waz-latest/waz.apk
+
+Pliki gry: `app/static/waz/`, projekt Android: `android-waz/` (gra jest wbudowana w APK),
+budowa: `.github/workflows/android-waz.yml`.
