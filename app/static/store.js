@@ -568,6 +568,340 @@ const LocalApi = (() => {
   }
 
   // ---------- cele (jak app/routers/goals.py) ----------
+  // ---------- doradca finansowy (jak app/advisor.py – zmieniaj oba miejsca) ----------
+  const NEEDS = new Set(["jedzenie", "czynsz", "prąd", "gaz", "woda", "ogrzewanie", "kredyt", "internet", "telefon",
+    "paliwo", "transport", "ubezpieczenie", "zdrowie", "dzieci", "podatki"]);
+  const FIXED = new Set(["czynsz", "prąd", "gaz", "woda", "ogrzewanie", "kredyt", "internet", "telefon", "ubezpieczenie"]);
+  const DEBT = new Set(["kredyt"]);
+  const WEEKDAYS = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela"];
+
+  const pct = (part, whole) => (whole ? halfUp((10000 * part) / whole) / 100 : null);
+  const ym = (y, m) => `${y}-${pad2(m)}`;
+  const monthShift = (month, delta) => ym(...shiftYM(+month.slice(0, 4), +month.slice(5, 7), delta));
+  const normName = (text) => text.toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+  const byDateId = (rows) => [...rows].sort((a, b) => cmp(a.date, b.date) || a.id - b.id);
+  const inMonthOf = (rows, month) => rows.filter((r) => r.date.startsWith(month));
+  const isFixed = (r) => r.recurring_id != null || FIXED.has(r.category);
+  const isNeed = (r) => NEEDS.has(r.category) || isFixed(r);
+  const monthIndex = (month) => +month.slice(0, 4) * 12 + +month.slice(5, 7);
+  const tenths = (x10) => `${Math.floor(x10 / 10)},${x10 % 10}`;
+  const lastOf = (rows) => rows.reduce((best, r) => (!best || cmp(r.date, best.date) > 0 ||
+    (r.date === best.date && r.id > best.id) ? r : best), null);
+  const isoDay = (iso, deltaDays = 0) => {
+    const d = new Date(Date.parse(iso) + deltaDays * 86400000);
+    return d.toISOString().slice(0, 10);
+  };
+  /** Kategoria o największej wartości w słowniku (remis: alfabetycznie). */
+  const topKeys = (counts) => Object.keys(counts).sort((a, b) => counts[b] - counts[a] || cmp(a, b));
+
+  function advisorReport(month, extraSavings = 0) {
+    const expenses = byDateId(db.expenses), incomes = byDateId(db.incomes);
+    const budgets = db.budgets;
+    // Oszczędności: odłożone w celach + podane z zewnątrz (np. konto oszczędnościowe).
+    const goalsSaved = db.goals.reduce((s, g) => s + g.saved_cents, 0) + extraSavings;
+
+    const current = todayIso().slice(0, 7);
+    const complete = month < current;
+    const expM = inMonthOf(expenses, month), incM = inMonthOf(incomes, month);
+    const income = sumCents(incM), spent = sumCents(expM);
+    const prev = monthShift(month, -1);
+
+    const start = complete ? 0 : 1;
+    let window = [0, 1, 2].map((k) => monthShift(month, -(start + k)))
+      .filter((m) => inMonthOf(expenses, m).length || inMonthOf(incomes, m).length).sort();
+    if (!window.length) window = [month];
+    const n = window.length;
+    const wExp = expenses.filter((r) => window.includes(r.date.slice(0, 7)));
+    const wInc = incomes.filter((r) => window.includes(r.date.slice(0, 7)));
+    const avg = (rows) => halfUp(sumCents(rows) / n);
+    const avgIncome = avg(wInc), avgExp = avg(wExp);
+    const avgFixed = avg(wExp.filter(isFixed));
+    const avgNeeds = avg(wExp.filter(isNeed));
+    const avgDebt = avg(wExp.filter((r) => DEBT.has(r.category)));
+    const avgWants = avgExp - avgNeeds;
+    const avgSavings = avgIncome - avgExp;
+
+    const emergency10 = avgExp ? halfUp((10 * goalsSaved) / avgExp) : null;
+    const ratios = {
+      needs_percent: pct(avgNeeds, avgIncome),
+      wants_percent: pct(avgWants, avgIncome),
+      savings_percent: pct(avgSavings, avgIncome),
+      fixed_percent: pct(avgFixed, avgIncome),
+      debt_to_income_percent: pct(avgDebt, avgIncome),
+    };
+
+    const before = new Set([1, 2, 3].map((k) => monthShift(month, -k)));
+    const categories = [...new Set(expM.map((r) => r.category))].map((cat) => {
+      const rows = expM.filter((r) => r.category === cat);
+      const total = sumCents(rows);
+      const usual = halfUp(sumCents(expenses.filter((r) => r.category === cat && before.has(r.date.slice(0, 7)))) / 3);
+      return {
+        category: cat,
+        total: total / 100,
+        share_percent: pct(total, spent),
+        usual: usual / 100,
+        change_percent: pct(total - usual, usual),
+        need: rows.some(isNeed),
+        fixed: rows.some(isFixed),
+        _cents: total, _usual: usual,
+      };
+    }).sort((a, b) => b._cents - a._cents || cmp(a.category, b.category));
+
+    // --- ocena kondycji 0–100 ---
+    const components = [];
+    let score = null;
+    if (avgIncome > 0) {
+      const sp = ratios.savings_percent, dti = ratios.debt_to_income_percent, fixed = ratios.fixed_percent;
+      const comp = (key, label, value, points, max, text) => components.push({ key, label, value, points, max, text });
+      comp("savings", "Oszczędzanie", sp, halfUp(30 * Math.min(Math.max(sp / 20, 0), 1)), 30,
+        `Zostaje ${halfUp(sp)}% przychodów (cel: co najmniej 20%).`);
+      if (emergency10 == null) {
+        comp("emergency", "Poduszka finansowa", null, 25, 25, "Brak wydatków do porównania.");
+      } else {
+        comp("emergency", "Poduszka finansowa", emergency10 / 10, halfUp(25 * Math.min(emergency10 / 60, 1)), 25,
+          `Oszczędności starczą na ${tenths(emergency10)} mies. wydatków (cel: 3–6).`);
+      }
+      const debtPts = dti <= 10 ? 20 : dti >= 40 ? 0 : halfUp((20 * (40 - dti)) / 30);
+      comp("debt", "Zadłużenie", dti, debtPts, 20, `Raty kredytów to ${halfUp(dti)}% przychodów (bezpiecznie: do 30%).`);
+      const fixedPts = fixed <= 50 ? 15 : fixed >= 80 ? 0 : halfUp((15 * (80 - fixed)) / 30);
+      comp("fixed", "Koszty stałe", fixed, fixedPts, 15, `Stałe rachunki to ${halfUp(fixed)}% przychodów (dobrze: do 50%).`);
+      const monthBudgets = Object.keys(budgets).sort();
+      if (monthBudgets.length) {
+        const ok = monthBudgets.filter((c) => sumCents(expM.filter((r) => r.category === c)) <= budgets[c]).length;
+        comp("budgets", "Limity", ok, halfUp((10 * ok) / monthBudgets.length), 10,
+          `Dotrzymane limity: ${ok} z ${monthBudgets.length}.`);
+      } else {
+        comp("budgets", "Limity", null, 5, 10, "Nie ustawiono limitów wydatków.");
+      }
+      score = components.reduce((s, c) => s + c.points, 0);
+    }
+    const label = score == null ? null : score >= 80 ? "bardzo dobra" : score >= 60 ? "dobra"
+      : score >= 40 ? "przeciętna" : "słaba";
+
+    // --- rekomendacje ---
+    const recs = [];
+    const rec = (key, text) => recs.push({ key, text });
+    if (!expenses.length && !incomes.length) {
+      rec("start", "Dodaj wydatki i przychody z kilku tygodni – wtedy pojawi się ocena i rekomendacje.");
+    }
+    if (avgIncome > 0) {
+      const wantsByCat = {};
+      for (const r of wExp) if (!isNeed(r)) wantsByCat[r.category] = (wantsByCat[r.category] || 0) + r.amount_cents;
+      const topWant = topKeys(wantsByCat)[0];
+      if (ratios.savings_percent < 10) {
+        let text = `Zostaje tylko ${halfUp(ratios.savings_percent)}% przychodów. Celuj w co najmniej 10%, ` +
+          `czyli ok. ${zl(halfUp(avgIncome / 10))} miesięcznie.`;
+        if (topWant) {
+          text += ` Największy wydatek „na przyjemności” to ${topWant}: średnio ` +
+            `${zl(halfUp(wantsByCat[topWant] / n))} miesięcznie.`;
+        }
+        rec("savings", text);
+      }
+      if (emergency10 != null && emergency10 < 30) {
+        const target = 3 * avgExp;
+        rec("emergency", `Poduszka finansowa: odłożone ${zl(goalsSaved)}, to ${tenths(emergency10)} mies. ` +
+          `wydatków. Zalecane minimum to 3 miesiące, czyli ok. ${zl(target)} – brakuje ${zl(target - goalsSaved)}.`);
+      }
+      if (ratios.debt_to_income_percent > 30) {
+        rec("debt", `Raty kredytów to ${halfUp(ratios.debt_to_income_percent)}% przychodów – powyżej ` +
+          "bezpiecznych 30%. Unikaj nowych zobowiązań, a nadwyżki kieruj na nadpłatę najdroższego kredytu.");
+      }
+      if (ratios.wants_percent > 30) {
+        rec("wants", `Wydatki na przyjemności to ${halfUp(ratios.wants_percent)}% przychodów – zasada ` +
+          "50/30/20 zaleca do 30%.");
+      }
+      if (ratios.needs_percent > 60) {
+        rec("needs", `Koszty podstawowe pochłaniają ${halfUp(ratios.needs_percent)}% przychodów. ` +
+          "Przejrzyj rachunki: taryfę prądu i gazu, abonamenty telefonu i internetu, " +
+          "ubezpieczenia – tam najłatwiej o stałą oszczędność.");
+      }
+    }
+    const spikes = categories.filter((c) => c._usual > 0 && c._cents - c._usual >= 10000 && c.change_percent >= 20);
+    if (spikes.length) {
+      const c = [...spikes].sort((a, b) => (a._usual - a._cents) - (b._usual - b._cents) || cmp(a.category, b.category))[0];
+      rec("spike", `„${c.category}”: ${zl(c._cents)} w tym miesiącu, o ${halfUp(c.change_percent)}% ` +
+        `więcej niż zwykle (${zl(c._usual)}).`);
+    }
+    if (!Object.keys(budgets).length && wExp.length) {
+      const variable = {};
+      for (const r of wExp) if (!isFixed(r)) variable[r.category] = (variable[r.category] || 0) + r.amount_cents;
+      const top = topKeys(variable).slice(0, 2);
+      if (top.length) rec("budgets", "Ustaw miesięczne limity na największe wydatki zmienne: " + top.join(" i ") + ".");
+    }
+    if (avgIncome > 0 && !recs.length && avgSavings > 0) {
+      rec("good", `Finanse wyglądają zdrowo. Nadwyżkę (ok. ${zl(avgSavings)} miesięcznie) przelewaj ` +
+        "regularnie na cele albo poduszkę finansową.");
+    }
+
+    categories.forEach((c) => { delete c._cents; delete c._usual; });
+    return {
+      month,
+      complete,
+      basis_months: window,
+      totals: {
+        income: income / 100, expenses: spent / 100, balance: (income - spent) / 100,
+        savings_rate: pct(income - spent, income),
+        prev_income: sumCents(inMonthOf(incomes, prev)) / 100, prev_expenses: sumCents(inMonthOf(expenses, prev)) / 100,
+      },
+      averages: {
+        income: avgIncome / 100, expenses: avgExp / 100, fixed: avgFixed / 100,
+        needs: avgNeeds / 100, wants: avgWants / 100, savings: avgSavings / 100, debt_payments: avgDebt / 100,
+      },
+      ratios,
+      emergency_fund: { saved: goalsSaved / 100, months_covered: emergency10 == null ? null : emergency10 / 10 },
+      categories,
+      health: { score, label, components },
+      recommendations: recs.slice(0, 5),
+    };
+  }
+
+  function advisorTrends(kind, months) {
+    const rows = byDateId(db[TABLES[kind]]);
+    const current = todayIso().slice(0, 7);
+    const labels = [];
+    for (let k = months - 1; k >= 0; k--) labels.push(monthShift(current, -k));
+    const full = months - 1;
+    const series = (subset) => {
+      const cents = labels.map((m) => sumCents(inMonthOf(subset, m)));
+      const base = cents.slice(0, full);
+      const average = halfUp(base.reduce((s, v) => s + v, 0) / full);
+      const meanX = (full - 1) / 2;
+      let sxx = 0, sxy = 0;
+      for (let x = 0; x < full; x++) sxx += (x - meanX) ** 2;
+      base.forEach((v, x) => { sxy += (x - meanX) * (v - average); });
+      const slope = sxx ? sxy / sxx : 0;
+      let trend;
+      if (average === 0) trend = cents[cents.length - 1] ? "new" : "flat";
+      else {
+        const rel = slope / average;
+        trend = rel > 0.05 ? "up" : rel < -0.05 ? "down" : "flat";
+      }
+      return {
+        values: cents.map((c) => c / 100), average: average / 100, current: cents[cents.length - 1] / 100,
+        slope: halfUp(slope) / 100, trend, _total: cents.reduce((s, v) => s + v, 0),
+      };
+    };
+    const inRange = rows.filter((r) => labels.includes(r.date.slice(0, 7)));
+    const cats = [...new Set(inRange.map((r) => r.category))]
+      .map((cat) => ({ category: cat, ...series(inRange.filter((r) => r.category === cat)) }))
+      .sort((a, b) => b._total - a._total || cmp(a.category, b.category));
+    const total = series(inRange);
+    [total, ...cats].forEach((c) => delete c._total);
+    return { kind, months: labels, total, categories: cats };
+  }
+
+  function advisorCompare(kind, a, b) {
+    const rows = byDateId(db[TABLES[kind]]);
+    const ra = inMonthOf(rows, a), rb = inMonthOf(rows, b);
+    const out = [...new Set([...ra, ...rb].map((r) => r.category))].map((cat) => {
+      const ca = sumCents(ra.filter((r) => r.category === cat));
+      const cb = sumCents(rb.filter((r) => r.category === cat));
+      return { category: cat, a: ca / 100, b: cb / 100, diff: (cb - ca) / 100, change_percent: pct(cb - ca, ca), _d: cb - ca };
+    }).sort((x, y) => Math.abs(y._d) - Math.abs(x._d) || cmp(x.category, y.category));
+    out.forEach((c) => delete c._d);
+    const ta = sumCents(ra), tb = sumCents(rb);
+    return { kind, a, b, total_a: ta / 100, total_b: tb / 100, diff: (tb - ta) / 100, change_percent: pct(tb - ta, ta), categories: out };
+  }
+
+  function advisorMerchants(kind, from, to, limit) {
+    const rows = byDateId(db[TABLES[kind]])
+      .filter((r) => r.description.trim() && (!from || r.date >= from) && (!to || r.date <= to));
+    const groups = {};
+    for (const r of rows) (groups[normName(r.description)] ||= []).push(r);
+    return Object.entries(groups).map(([key, items]) => {
+      const last = lastOf(items);
+      const cats = {};
+      for (const r of items) cats[r.category] = (cats[r.category] || 0) + 1;
+      const total = sumCents(items);
+      return {
+        name: last.description.trim(), category: topKeys(cats)[0], count: items.length, total: total / 100,
+        average: halfUp(total / items.length) / 100, last_date: last.date, _t: total, _k: key,
+      };
+    }).sort((x, y) => y._t - x._t || cmp(x._k, y._k)).slice(0, limit)
+      .map(({ _t, _k, ...m }) => m);
+  }
+
+  function advisorSubscriptions() {
+    const today = todayIso();
+    const since = isoDay(today, -365), activeSince = isoDay(today, -62);
+    const registered = new Set(db.recurring.filter((r) => r.kind === "expense").map((r) => normName(r.name)));
+    const groups = {};
+    for (const r of byDateId(db.expenses)) {
+      if (r.recurring_id == null && r.description.trim() && r.date >= since) (groups[normName(r.description)] ||= []).push(r);
+    }
+    const found = [];
+    for (const [key, items] of Object.entries(groups)) {
+      const med = median(items.map((r) => r.amount_cents));
+      const months = [...new Set(items.map((r) => r.date.slice(0, 7)))].sort();
+      const span = monthIndex(months[months.length - 1]) - monthIndex(months[0]) + 1;
+      // Co najmniej 3 miesiące, mniej więcej raz w miesiącu (nie codzienne zakupy), w co najmniej
+      // 3/4 miesięcy od pierwszej do ostatniej płatności i o zbliżonej kwocie (±50% u 3/4 płatności).
+      if (months.length < 3 || 2 * items.length > 3 * months.length || 4 * months.length < 3 * span) continue;
+      if (4 * items.filter((r) => 2 * Math.abs(r.amount_cents - med) <= med).length < 3 * items.length) continue;
+      const last = lastOf(items);
+      const amount = med;
+      found.push({
+        name: last.description.trim(),
+        category: last.category,
+        amount: amount / 100,
+        yearly_cost: (12 * amount) / 100,
+        fixed_amount: items.every((r) => 10 * Math.abs(r.amount_cents - med) <= med),
+        months: months.length,
+        typical_day: median(items.map((r) => +r.date.slice(8, 10))),
+        first_date: items[0].date,
+        last_date: last.date,
+        active: last.date >= activeSince,
+        registered: registered.has(key),
+        _a: amount, _k: key,
+      });
+    }
+    found.sort((x, y) => (x.active === y.active ? 0 : x.active ? -1 : 1) || y._a - x._a || cmp(x._k, y._k));
+    const monthly = found.filter((s) => s.active).reduce((s, x) => s + x._a, 0);
+    return { monthly_total: monthly / 100, yearly_total: (12 * monthly) / 100, items: found.map(({ _a, _k, ...s }) => s) };
+  }
+
+  function advisorPatterns(from, to, smallLimit) {
+    const rows = byDateId(db.expenses).filter((r) => from <= r.date && r.date <= to);
+    const total = sumCents(rows);
+    const days = dayDiff(from, to) + 1;
+    const byDay = Array.from({ length: 7 }, () => [0, 0]);
+    for (const r of rows) {
+      const d = (new Date(Date.parse(r.date)).getUTCDay() + 6) % 7;
+      byDay[d][0] += r.amount_cents;
+      byDay[d][1] += 1;
+    }
+    const parts = [0, 0, 0];
+    for (const r of rows) {
+      const day = +r.date.slice(8, 10);
+      parts[day <= 10 ? 0 : day <= 20 ? 1 : 2] += r.amount_cents;
+    }
+    const small = rows.filter((r) => r.amount_cents < smallLimit);
+    const weekend = byDay[5][0] + byDay[6][0];
+    return {
+      date_from: from, date_to: to, days,
+      total: total / 100, count: rows.length,
+      daily_average: halfUp(total / days) / 100,
+      average_transaction: rows.length ? halfUp(total / rows.length) / 100 : 0,
+      weekend_share_percent: pct(weekend, total),
+      by_weekday: byDay.map(([t, c], i) => ({ weekday: WEEKDAYS[i], total: t / 100, count: c, share_percent: pct(t, total) })),
+      by_part_of_month: ["1–10", "11–20", "21–koniec"].map((p, i) => ({ part: p, total: parts[i] / 100, share_percent: pct(parts[i], total) })),
+      small_purchases: { limit: smallLimit / 100, count: small.length, total: sumCents(small) / 100, share_percent: pct(sumCents(small), total) },
+    };
+  }
+
+  /** Parametr liczbowy z zakresu (jak Query(ge, le) w FastAPI). */
+  function numParam(q, name, def, min, max, integer = false) {
+    const raw = q.get(name);
+    if (raw == null || raw === "") return def;
+    const v = Number(raw);
+    if (!Number.isFinite(v) || (integer && !Number.isInteger(v)) || v < min || v > max) {
+      throw new HttpError(422, `${name}: wartość spoza zakresu ${min}–${max}`);
+    }
+    return v;
+  }
+  const optMonth = (q, name) => (q.get(name) ? validMonth(q.get(name)) : null);
+  const optDate = (q, name) => (q.get(name) ? validDate(q.get(name)) : null);
+
   function toGoal(g) {
     const remaining = Math.max(0, g.target_cents - g.saved_cents);
     let monthly = null;
@@ -718,6 +1052,33 @@ const LocalApi = (() => {
     }],
 
     ["GET", /^\/analytics\/insights$/, () => computeInsights()],
+
+    // --- doradca finansowy (jak app/routers/analytics.py) ---
+    ["GET", /^\/analytics\/report$/, (q) =>
+      advisorReport(optMonth(q, "month") || currentMonth(), halfUp(numParam(q, "savings", 0, 0, 100000000) * 100))],
+
+    ["GET", /^\/analytics\/trends$/, (q) =>
+      advisorTrends(validKind(q.get("kind") ?? undefined), numParam(q, "months", 6, 3, 24, true))],
+
+    ["GET", /^\/analytics\/compare$/, (q) => {
+      const b = optMonth(q, "b") || currentMonth();
+      return advisorCompare(validKind(q.get("kind") ?? undefined), optMonth(q, "a") || monthShift(b, -1), b);
+    }],
+
+    ["GET", /^\/analytics\/merchants$/, (q) =>
+      advisorMerchants(validKind(q.get("kind") ?? undefined), optDate(q, "date_from"), optDate(q, "date_to"),
+        numParam(q, "limit", 20, 1, 100, true))],
+
+    ["GET", /^\/analytics\/subscriptions$/, () => advisorSubscriptions()],
+
+    ["GET", /^\/analytics\/patterns$/, (q) => {
+      const to = optDate(q, "date_to") || todayIso();
+      const from = optDate(q, "date_from") || isoDay(to, -89);
+      if (from > to) throw new HttpError(422, "date_from musi być przed date_to");
+      const limit = numParam(q, "small_limit", 50, 0, 10000);
+      if (limit <= 0) throw new HttpError(422, "small_limit: musi być większy od 0");
+      return advisorPatterns(from, to, halfUp(limit * 100));
+    }],
 
     ["GET", /^\/analytics\/suggest-category$/, (q) => {
       const text = q.get("text");

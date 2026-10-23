@@ -511,3 +511,24 @@ body.ai-open { overflow: hidden; }
 .banner { background: #1d1612; }
 a { color: var(--gold); }
 .reminder .btn-small { white-space: nowrap; flex: none; }
+
+/* Kondycja finansów (Plan) */
+.health-score { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+.health-score strong { font-family: var(--serif); font-size: 46px; font-weight: 400; color: var(--gold-soft); line-height: 1; }
+.health-score strong small { font-size: 18px; color: var(--muted); }
+.health-score span { font-size: 17px; color: var(--text); text-transform: capitalize; }
+.health-score span small { text-transform: none; font-size: 12px; }
+.health-parts { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.health-parts li { font-size: 13px; }
+.hp-head { display: flex; justify-content: space-between; color: var(--text); font-size: 14px; margin-bottom: 4px; }
+.health-parts .budget-bar > div { background: var(--gold); }
+.split { margin: 4px 0 14px; display: flex; flex-direction: column; gap: 6px; }
+.split-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--good); }
+.split-bar i { display: block; height: 100%; }
+.split-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--text-2); }
+.split-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.s-needs { background: var(--expense); }
+.s-wants { background: var(--gold); }
+.s-save { background: var(--good); }
+.health h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--gold); margin: 6px 0 10px; font-weight: 600; }
+.health .btn-ghost { margin-top: 14px; width: 100%; }

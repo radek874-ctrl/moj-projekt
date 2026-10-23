@@ -133,6 +133,22 @@ Wszystkie przyjmują `date_from` i `date_to`. Oprócz `balance` przyjmują też
 `category` oraz `kind=expense` (domyślnie) lub `kind=income`, np.
 `/analytics/by-category?kind=income` pokazuje źródła przychodów.
 
+### Doradca finansowy `/analytics` (`app/advisor.py`, to samo w `store.js`)
+
+| Ścieżka | Zwraca |
+|---|---|
+| `GET /analytics/report?month=&savings=` | **raport kondycji finansów**: miesiąc na tle poprzedniego, średnie z 3 pełnych miesięcy, podział 50/30/20 (potrzeby / przyjemności / oszczędności), koszty stałe, raty względem przychodów (DTI), poduszka finansowa w miesiącach wydatków (cele + opcjonalnie `savings` spoza aplikacji), kategorie z odchyleniem od normy, **ocena 0–100** ze składnikami i rekomendacje z kwotami |
+| `GET /analytics/trends?months=6&kind=` | sumy kategorii miesiąc po miesiącu, średnia, nachylenie trendu i kierunek `up/down/flat/new` |
+| `GET /analytics/compare?a=&b=&kind=` | porównanie dwóch miesięcy w kategoriach (domyślnie poprzedni vs bieżący) |
+| `GET /analytics/merchants?date_from=&date_to=&limit=` | wpisy zgrupowane po opisie (sklep, firma) |
+| `GET /analytics/subscriptions` | wykryte regularne płatności z 12 miesięcy (abonamenty, rachunki, raty): kwota, koszt roczny, czy stała kwota, czy aktywne, czy są już na liście stałych opłat |
+| `GET /analytics/patterns?date_from=&date_to=&small_limit=50` | nawyki: dni tygodnia, udział weekendu, części miesiąca, drobne zakupy |
+
+Ocena kondycji (0–100): oszczędzanie 30 pkt (pełna przy ≥20% przychodów), poduszka 25 pkt
+(6 miesięcy wydatków), zadłużenie 20 pkt (raty ≤10% przychodów; 0 pkt przy ≥40%), koszty stałe
+15 pkt (≤50%; 0 pkt przy ≥80%), limity 10 pkt (dotrzymane limity; 5 pkt, gdy brak limitów).
+W aplikacji: karta „Kondycja finansów” w zakładce Plan.
+
 ### Limity wydatków `/budgets`
 
 | Metoda | Ścieżka | Opis |
@@ -163,10 +179,13 @@ Najpierw sprawdza Twoje wcześniejsze wpisy (`history`), potem słownik (`keywor
 ### Asystent AI (Claude)
 
 Przycisk ✨ w aplikacji otwiera czat (`app/static/assistant.js`). Asystent:
+- działa jak doradca finansowy: zaczyna od raportu kondycji, potem sięga po trendy, porównania,
+  sprzedawców, wykryte abonamenty i nawyki zakupowe; zna progi (oszczędności 10–20%, 50/30/20,
+  poduszka 3–6 miesięcy, raty do 30% przychodów) i daje konkretne rady z kwotami i efektem rocznym;
 - odpowiada na pytania o finanse na podstawie danych z aplikacji (korzysta z narzędzi
   wywołujących to samo API: bilans, kategorie, wpisy, podpowiedzi, opłaty, kalendarz, limity);
-- zapisuje wydatki i przychody, opłaca stałe rachunki i dodaje terminy, zawsze po potwierdzeniu
-  w oknie dialogowym;
+- zapisuje wydatki i przychody, opłaca stałe rachunki, dodaje terminy, ustawia limity, zakłada
+  cele i dopisuje wykryte abonamenty do stałych opłat, zawsze po potwierdzeniu w oknie dialogowym;
 - czyta zdjęcia paragonów (📷) i zapisuje je jako wydatek.
 
 Wymaga własnego klucza API Anthropic (⚙ w oknie asystenta). Klucz jest zapisany tylko
@@ -245,6 +264,7 @@ app/
   main.py              # aplikacja FastAPI, opis API
   db.py                # SQLite: schemat, migracja, konwersja groszy
   insights.py          # podpowiedzi i prognoza bez AI, podpowiadanie kategorii
+  advisor.py           # doradca: raport kondycji, trendy, porównania, abonamenty, nawyki
   schemas.py           # modele danych (wejście/wyjście)
   filters.py           # filtry zapytań (daty, kategoria)
   routers/

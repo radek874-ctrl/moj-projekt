@@ -105,6 +105,42 @@ const AI_TOOLS = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "get_report",
+    description: "NAJWAŻNIEJSZE narzędzie doradcy: pełny raport kondycji finansów za miesiąc. Zawiera przychody/wydatki miesiąca i poprzedniego, średnie z 3 pełnych miesięcy (basis_months), podział potrzeby/przyjemności/oszczędności (50/30/20), koszty stałe, raty względem przychodów (DTI), poduszkę finansową w miesiącach wydatków, kategorie z odchyleniem od normy (usual = średnia z 3 poprzednich miesięcy), ocenę 0–100 z rozbiciem na składniki i gotowe rekomendacje z kwotami. Użyj na start każdej analizy i pytań typu „jak stoję z finansami”.",
+    input_schema: {
+      type: "object",
+      properties: {
+        month: { ...MONTH, description: "Miesiąc RRRR-MM (domyślnie bieżący, niepełny)" },
+        savings: { type: "number", description: "Oszczędności poza aplikacją w zł (konto oszczędnościowe, lokaty), jeśli użytkownik je podał – doliczane do poduszki" },
+      },
+    },
+  },
+  {
+    name: "get_trends",
+    description: "Trendy: sumy każdej kategorii w kolejnych miesiącach (ostatni = bieżący, niepełny), średnia z pełnych miesięcy, nachylenie (zł/miesiąc) i kierunek up/down/flat/new. Do pytań „co rośnie”, „jak zmieniały się wydatki”.",
+    input_schema: { type: "object", properties: { kind: KIND, months: { type: "integer", minimum: 3, maximum: 24, description: "Ile miesięcy (domyślnie 6)" } } },
+  },
+  {
+    name: "compare_months",
+    description: "Porównanie dwóch miesięcy w kategoriach (od największej zmiany). Domyślnie poprzedni (a) vs bieżący (b).",
+    input_schema: { type: "object", properties: { a: MONTH, b: MONTH, kind: KIND } },
+  },
+  {
+    name: "get_merchants",
+    description: "Wpisy zgrupowane po opisie (sklep, firma): liczba, suma, średnia, ostatnia data – gdzie idzie najwięcej pieniędzy.",
+    input_schema: { type: "object", properties: { kind: KIND, date_from: DATE, date_to: DATE, limit: { type: "integer", minimum: 1, maximum: 100 } } },
+  },
+  {
+    name: "get_subscriptions",
+    description: "Wykryte regularne płatności z ostatnich 12 miesięcy (abonamenty, raty, rachunki) wpisywane ręcznie: typowa kwota, koszt roczny, czy kwota stała (fixed_amount), czy nadal aktywne i czy są już na liście stałych opłat (registered). Do szukania oszczędności i porządkowania stałych opłat.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_patterns",
+    description: "Nawyki zakupowe (domyślnie ostatnie 90 dni): wydatki wg dnia tygodnia, udział weekendu, części miesiąca (np. dużo zaraz po wypłacie), drobne zakupy poniżej progu (efekt „kawy na mieście”), średnia transakcja i dzienna.",
+    input_schema: { type: "object", properties: { date_from: DATE, date_to: DATE, small_limit: { type: "number", description: "Próg drobnego wydatku w zł (domyślnie 50)" } } },
+  },
+  {
     name: "add_transaction",
     description: "Zapisuje nowy wydatek albo przychód. Aplikacja pokaże użytkownikowi okno potwierdzenia przed zapisem.",
     input_schema: {
@@ -149,6 +185,44 @@ const AI_TOOLS = [
       required: ["title", "date"],
     },
   },
+  {
+    name: "set_budget",
+    description: "Ustawia (lub zmienia) miesięczny limit wydatków na kategorię. Wymaga potwierdzenia użytkownika.",
+    input_schema: {
+      type: "object",
+      properties: { category: { type: "string" }, monthly_limit: { type: "number", description: "Limit w zł" } },
+      required: ["category", "monthly_limit"],
+    },
+  },
+  {
+    name: "add_goal",
+    description: "Tworzy cel oszczędnościowy (np. poduszka finansowa, wakacje). Wymaga potwierdzenia użytkownika.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        target: { type: "number", description: "Kwota celu w zł" },
+        saved: { type: "number", description: "Ile już odłożono (opcjonalnie)" },
+        deadline: DATE,
+      },
+      required: ["name", "target"],
+    },
+  },
+  {
+    name: "add_bill",
+    description: "Dodaje stałą opłatę lub stały przychód (np. wykryty abonament z get_subscriptions), żeby był w prognozach i przypomnieniach. Wymaga potwierdzenia użytkownika.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: KIND,
+        name: { type: "string", description: "Nazwa, np. Netflix" },
+        category: { type: "string" },
+        amount: { type: "number", description: "Typowa kwota w zł" },
+        day: { type: "integer", minimum: 1, maximum: 28, description: "Dzień miesiąca płatności" },
+      },
+      required: ["name", "category", "amount"],
+    },
+  },
 ];
 
 const TOOL_LABELS = {
@@ -163,8 +237,18 @@ const TOOL_LABELS = {
   add_transaction: "zapis wpisu",
   pay_bill: "opłacenie rachunku",
   add_event: "nowy termin",
+  get_report: "analizuję kondycję finansów",
+  get_trends: "sprawdzam trendy",
+  compare_months: "porównuję miesiące",
+  get_merchants: "sprawdzam sklepy i firmy",
+  get_subscriptions: "szukam stałych płatności",
+  get_patterns: "badam nawyki zakupowe",
+  set_budget: "ustawienie limitu",
+  add_goal: "nowy cel",
+  add_bill: "nowa stała opłata",
 };
 
+const AI_WRITE_TOOLS = new Set(["add_transaction", "pay_bill", "add_event", "set_budget", "add_goal", "add_bill"]);
 const KIND_PL = { expense: "Wydatek", income: "Przychód" };
 
 /** Pyta użytkownika o zgodę na zapis. Zwraca true/false. */
@@ -196,6 +280,42 @@ async function runTool(name, input) {
       return api("/goals");
     case "get_budgets":
       return api("/budgets/status" + qs({ month: p.month }));
+    case "get_report":
+      return api("/analytics/report" + qs({ month: p.month, savings: p.savings }));
+    case "get_trends":
+      return api("/analytics/trends" + qs({ kind: p.kind, months: p.months }));
+    case "compare_months":
+      return api("/analytics/compare" + qs({ a: p.a, b: p.b, kind: p.kind }));
+    case "get_merchants":
+      return api("/analytics/merchants" + qs({ kind: p.kind, date_from: p.date_from, date_to: p.date_to, limit: p.limit }));
+    case "get_subscriptions":
+      return api("/analytics/subscriptions");
+    case "get_patterns":
+      return api("/analytics/patterns" + qs({ date_from: p.date_from, date_to: p.date_to, small_limit: p.small_limit }));
+    case "set_budget": {
+      const ok = await confirmWrite("Limit wydatków – zapisać?", [
+        ["Kategoria", p.category], ["Limit miesięczny", money(p.monthly_limit)],
+      ]);
+      if (!ok) return { cancelled: true, message: "Użytkownik anulował." };
+      const cat = String(p.category || "").trim().toLowerCase();
+      return { saved: await api(`/budgets/${encodeURIComponent(cat)}`, json("PUT", { monthly_limit: p.monthly_limit })) };
+    }
+    case "add_goal": {
+      const ok = await confirmWrite("Nowy cel – zapisać?", [
+        ["Cel", p.name], ["Kwota", money(p.target)], ["Odłożone", p.saved ? money(p.saved) : ""],
+        ["Termin", p.deadline ? formatDate(p.deadline) : ""],
+      ]);
+      if (!ok) return { cancelled: true, message: "Użytkownik anulował." };
+      return { saved: await api("/goals", json("POST", { name: p.name, target: p.target, saved: p.saved || 0, deadline: p.deadline || null })) };
+    }
+    case "add_bill": {
+      const kind = p.kind === "income" ? "income" : "expense";
+      const ok = await confirmWrite(`${kind === "income" ? "Stały przychód" : "Stała opłata"} – zapisać?`, [
+        ["Nazwa", p.name], ["Kategoria", p.category], ["Kwota", money(p.amount)], ["Dzień miesiąca", p.day || 10],
+      ]);
+      if (!ok) return { cancelled: true, message: "Użytkownik anulował." };
+      return { saved: await api("/recurring", json("POST", { kind, name: p.name, category: p.category, amount: p.amount, day: p.day || 10 })) };
+    }
     case "add_transaction": {
       const date = p.date || iso(new Date());
       const ok = await confirmWrite(`${KIND_PL[p.kind] || "Wpis"} – zapisać?`, [
@@ -238,13 +358,28 @@ function systemPrompt() {
   const weekday = now.toLocaleDateString("pl-PL", { weekday: "long" });
   const cats = [...CATEGORIES.expense.map(([c]) => c)].join(", ");
   const incs = [...CATEGORIES.income.map(([c]) => c)].join(", ");
-  return `Jesteś asystentem w aplikacji „Budżet domowy” na telefonie. Pomagasz prowadzić domowe finanse: odpowiadasz na pytania o wydatki i przychody, doradzasz, jak oszczędzać, i zapisujesz nowe wpisy.
+  return `Jesteś doradcą finansowym i analitykiem budżetu domowego w aplikacji „Budżet domowy” na telefonie. Masz wgląd w dane użytkownika przez narzędzia: analizujesz wydatki i przychody, oceniasz kondycję finansów, szukasz oszczędności, planujesz i zapisujesz wpisy.
 
 Dziś jest ${weekday}, ${iso(now)}. Waluta: złoty (zł).
 
+Jak analizujesz (metoda specjalisty):
+- Ogólne pytania o finanse („jak stoję”, „co poprawić”, „przeanalizuj”) zaczynaj od get_report. Potem dobierz narzędzia do pytania: get_trends (co rośnie w czasie), compare_months (skąd różnica), get_merchants (gdzie konkretnie), get_subscriptions (stałe płatności i abonamenty), get_patterns (nawyki: weekendy, drobne zakupy, wydatki po wypłacie), list_transactions (szczegóły).
+- Bieżący miesiąc jest niepełny – nie porównuj go wprost z pełnymi miesiącami; używaj prognozy z get_insights albo średnich z get_report (basis_months).
+- Miary i progi, którymi się kierujesz:
+  • stopa oszczędności: minimum 10%, dobrze 20% i więcej;
+  • zasada 50/30/20: potrzeby do ~50%, przyjemności do ~30%, oszczędności co najmniej 20% przychodów;
+  • poduszka finansowa: 3–6 miesięcy wydatków (w aplikacji = odłożone w celach; jeśli użytkownik poda oszczędności spoza aplikacji, przekaż je w parametrze savings);
+  • raty kredytów (DTI) do 30% przychodów, powyżej 40% – sytuacja ryzykowna;
+  • koszty stałe do ~50% przychodów.
+- Kolejność priorytetów w radach: 1) nie wydawać więcej niż wpływa, 2) poduszka finansowa, 3) spłata drogich długów (karty, chwilówki, raty), 4) cele (wakacje, samochód), 5) dalsze oszczędzanie.
+- Rady mają być konkretne, z kwotami z danych: „rozrywka: średnio 450 zł/mies.; ograniczenie do 300 zł da 1 800 zł rocznie”. Przeliczaj efekty roczne (×12). Wskazuj 2–3 najważniejsze rzeczy, nie wszystko naraz.
+- Szukając oszczędności, sprawdź: abonamenty z get_subscriptions (czy wszystkie potrzebne), kategorie z trendem „up”, odchylenia od normy w get_report, drobne zakupy i weekendy w get_patterns, największych sprzedawców w get_merchants.
+- Możesz od razu zaproponować działania i wykonać je narzędziami: limit na kategorię (set_budget), cel oszczędnościowy, np. poduszka (add_goal), dopisanie wykrytej stałej płatności do stałych opłat (add_bill), termin w kalendarzu (add_event).
+- Pamiętaj o polskich realiach: rachunki za media (prąd, gaz, woda, ogrzewanie), czynsz, raty, OC i przegląd auta raz w roku, 800+, PIT i zwrot podatku wiosną, wydatki sezonowe (święta w grudniu, wakacje, wyprawka we wrześniu, ogrzewanie zimą) – uwzględniaj sezonowość przy porównaniach.
+
 Zasady:
-- Liczby bierz wyłącznie z narzędzi. Nigdy nie zgaduj kwot – jeśli czegoś nie wiesz, sprawdź narzędziem.
-- Do zapisu używaj narzędzi add_transaction, pay_bill, add_event. Aplikacja sama poprosi użytkownika o potwierdzenie, więc nie dopytuj o zgodę osobno; dopytaj tylko, gdy brakuje kwoty albo nie wiadomo, czy to wydatek, czy przychód.
+- Liczby bierz wyłącznie z narzędzi. Nigdy nie zgaduj kwot – jeśli czegoś nie wiesz, sprawdź narzędziem. Obliczenia (sumy, różnice, efekty roczne) rób starannie.
+- Do zapisu używaj narzędzi add_transaction, pay_bill, add_event, set_budget, add_goal, add_bill. Aplikacja sama poprosi użytkownika o potwierdzenie, więc nie dopytuj o zgodę osobno; dopytaj tylko, gdy brakuje kwoty albo nie wiadomo, czy to wydatek, czy przychód.
 - Jeśli użytkownik anuluje zapis, przyjmij to i nie ponawiaj.
 - Przy rachunku za coś, co jest stałą opłatą (prąd, gaz, kredyt...), najpierw sprawdź get_bills i użyj pay_bill zamiast dodawać zwykły wydatek.
 - Kategorie wydatków w aplikacji: ${cats} (można też inne). Kategorie przychodów: ${incs}. Kategorie zapisuj małymi literami.
@@ -252,7 +387,7 @@ Zasady:
 - Odpowiadaj po polsku, krótko i konkretnie, jak w czacie na telefonie. Kwoty pisz jak „1 234,56 zł”. Możesz używać **pogrubienia** i krótkich list z myślnikami, bez tabel i nagłówków.
 - Zwracaj się do użytkownika neutralnie, bez form zależnych od płci (np. „wydano”, „Twoje wydatki”, „możesz”).
 - Prognoza z get_insights zawiera safe_daily – ile można wydawać dziennie do końca miesiąca; używaj jej przy pytaniach „ile mogę wydać”.
-- Rady dawaj praktyczne i oparte na danych użytkownika; nie udzielaj porad inwestycyjnych ani prawnych.`;
+- Doradzasz w budżecie domowym: oszczędzanie, wydatki, długi, planowanie. Nie polecaj konkretnych instrumentów inwestycyjnych, banków ani produktów i nie udzielaj porad prawnych ani podatkowych – przy takich pytaniach podaj ogólne zasady i zasugeruj licencjonowanego doradcę.`;
 }
 
 function aiClient(Anthropic) {
@@ -346,7 +481,7 @@ async function askAssistant(content) {
       }
       aiHistory.push({ role: "user", content: results });
       // Odśwież widok, jeśli asystent coś zapisał.
-      if (response.content.some((b) => b.type === "tool_use" && ["add_transaction", "pay_bill", "add_event"].includes(b.name))) {
+      if (response.content.some((b) => b.type === "tool_use" && AI_WRITE_TOOLS.has(b.name))) {
         refreshCurrentView();
       }
     }

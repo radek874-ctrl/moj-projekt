@@ -377,3 +377,185 @@ class BudgetStatus(BaseModel):
     remaining: float
     used_percent: float
     exceeded: bool
+
+
+# ---------- doradca finansowy (app/advisor.py) ----------
+
+class ReportTotals(BaseModel):
+    income: float
+    expenses: float
+    balance: float
+    savings_rate: float | None = Field(description="% przychodów, który został")
+    prev_income: float = Field(description="Przychody w poprzednim miesiącu")
+    prev_expenses: float = Field(description="Wydatki w poprzednim miesiącu")
+
+
+class ReportAverages(BaseModel):
+    """Średnie miesięczne z okresu bazowego (``basis_months``)."""
+
+    income: float
+    expenses: float
+    fixed: float = Field(description="Koszty stałe: rachunki, czynsz, raty, stałe opłaty")
+    needs: float = Field(description="Potrzeby (zasada 50/30/20)")
+    wants: float = Field(description="Przyjemności (zasada 50/30/20)")
+    savings: float = Field(description="Przychody − wydatki")
+    debt_payments: float = Field(description="Raty kredytów")
+
+
+class ReportRatios(BaseModel):
+    """Udziały w przychodach (%). None, gdy brak przychodów."""
+
+    needs_percent: float | None
+    wants_percent: float | None
+    savings_percent: float | None
+    fixed_percent: float | None
+    debt_to_income_percent: float | None
+
+
+class EmergencyFund(BaseModel):
+    saved: float = Field(description="Odłożone w celach oszczędnościowych + parametr `savings`")
+    months_covered: float | None = Field(description="Na ile miesięcy wydatków to starczy")
+
+
+class ReportCategory(BaseModel):
+    category: str
+    total: float
+    share_percent: float | None
+    usual: float = Field(description="Średnio miesięcznie w 3 poprzednich miesiącach")
+    change_percent: float | None
+    need: bool = Field(description="Potrzeba (true) czy przyjemność (false)")
+    fixed: bool
+
+
+class HealthComponent(BaseModel):
+    key: str
+    label: str
+    value: float | None
+    points: int
+    max: int
+    text: str
+
+
+class Health(BaseModel):
+    score: int | None = Field(description="0–100; None, gdy brak przychodów")
+    label: str | None
+    components: list[HealthComponent]
+
+
+class Recommendation(BaseModel):
+    key: str
+    text: str
+
+
+class FinancialReport(BaseModel):
+    month: str
+    complete: bool = Field(description="Czy miesiąc już się skończył")
+    basis_months: list[str] = Field(description="Miesiące, z których liczone są średnie i ocena")
+    totals: ReportTotals
+    averages: ReportAverages
+    ratios: ReportRatios
+    emergency_fund: EmergencyFund
+    categories: list[ReportCategory]
+    health: Health
+    recommendations: list[Recommendation]
+
+
+class TrendSeries(BaseModel):
+    values: list[float] = Field(description="Sumy w kolejnych miesiącach (jak ``months``)")
+    average: float = Field(description="Średnia z pełnych miesięcy (bez bieżącego)")
+    current: float
+    slope: float = Field(description="Zmiana miesiąc do miesiąca wg linii trendu (zł)")
+    trend: str = Field(description="up | down | flat | new")
+
+
+class CategoryTrend(TrendSeries):
+    category: str
+
+
+class Trends(BaseModel):
+    kind: Kind
+    months: list[str]
+    total: TrendSeries
+    categories: list[CategoryTrend]
+
+
+class CompareCategory(BaseModel):
+    category: str
+    a: float
+    b: float
+    diff: float
+    change_percent: float | None
+
+
+class Comparison(BaseModel):
+    kind: Kind
+    a: str
+    b: str
+    total_a: float
+    total_b: float
+    diff: float
+    change_percent: float | None
+    categories: list[CompareCategory]
+
+
+class Merchant(BaseModel):
+    name: str
+    category: str
+    count: int
+    total: float
+    average: float
+    last_date: dt.date
+
+
+class Subscription(BaseModel):
+    name: str
+    category: str
+    amount: float = Field(description="Typowa kwota (mediana)")
+    yearly_cost: float
+    fixed_amount: bool = Field(description="Zawsze ta sama kwota (±10%) – abonament; inaczej rachunek o zmiennej kwocie")
+    months: int = Field(description="W ilu miesiącach wystąpiła płatność")
+    typical_day: int
+    first_date: dt.date
+    last_date: dt.date
+    active: bool = Field(description="Ostatnia płatność w ciągu 62 dni (nie pominięto dwóch miesięcy)")
+    registered: bool = Field(description="Czy jest już na liście stałych opłat")
+
+
+class Subscriptions(BaseModel):
+    monthly_total: float
+    yearly_total: float
+    items: list[Subscription]
+
+
+class WeekdayStat(BaseModel):
+    weekday: str
+    total: float
+    count: int
+    share_percent: float | None
+
+
+class PartOfMonth(BaseModel):
+    part: str
+    total: float
+    share_percent: float | None
+
+
+class SmallPurchases(BaseModel):
+    limit: float
+    count: int
+    total: float
+    share_percent: float | None
+
+
+class Patterns(BaseModel):
+    date_from: dt.date
+    date_to: dt.date
+    days: int
+    total: float
+    count: int
+    daily_average: float
+    average_transaction: float
+    weekend_share_percent: float | None
+    by_weekday: list[WeekdayStat]
+    by_part_of_month: list[PartOfMonth]
+    small_purchases: SmallPurchases

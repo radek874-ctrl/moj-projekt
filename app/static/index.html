@@ -268,6 +268,10 @@
 
     <!-- PLAN: cele i limity -->
     <section id="view-plan" class="view" hidden>
+      <div class="card health" id="health-card" hidden>
+        <h2><span class="h-ico" data-icon="shieldCheck"></span>Kondycja finansów</h2>
+        <div id="health-body"></div>
+      </div>
       <div class="card">
         <h2><span class="h-ico" data-icon="gem"></span>Cele oszczędnościowe</h2>
         <div id="goal-list"></div>
@@ -352,7 +356,7 @@
 
       <div class="card">
         <h2><span class="h-ico" data-icon="info"></span>O aplikacji</h2>
-        <p class="muted">Budżet domowy 3.1 · działa bez internetu · wspólny budżet: Supabase · kursy walut: NBP ·
+        <p class="muted">Budżet domowy 3.2 · działa bez internetu · wspólny budżet: Supabase · kursy walut: NBP ·
           asystent: Claude (Anthropic)</p>
       </div>
     </section>
@@ -398,6 +402,8 @@
       <p>Zapytaj o swoje finanse albo poproś o zapisanie wydatku. Zapisy zawsze potwierdzasz.</p>
       <button type="button" data-ask="Ile wydano w tym miesiącu i na co najwięcej?">Ile wydano w tym miesiącu?</button>
       <button type="button" data-ask="Na czym mogę zaoszczędzić? Przeanalizuj moje wydatki z ostatnich 3 miesięcy.">Na czym mogę zaoszczędzić?</button>
+      <button type="button" data-ask="Oceń kondycję moich finansów i powiedz, co poprawić w pierwszej kolejności.">Oceń moje finanse</button>
+      <button type="button" data-ask="Znajdź moje stałe płatności i abonamenty. Które warto przejrzeć albo dopisać do stałych opłat?">Znajdź abonamenty</button>
       <button type="button" data-ask="Czy starczy mi pieniędzy do końca miesiąca?">Czy starczy do końca miesiąca?</button>
       <button type="button" data-ask="photo" data-icon="camera"> Zeskanuj paragon</button>
     </div>

@@ -1261,7 +1261,56 @@ goalForm.addEventListener("submit", async (ev) => {
   loaders.plan();
 });
 
+// Ocena kondycji finansów (GET /analytics/report): wynik 0–100, składniki, 50/30/20, rekomendacje.
+async function renderHealth() {
+  const r = await api("/analytics/report");
+  const card = $("#health-card");
+  const h = r.health;
+  card.hidden = h.score == null && !r.recommendations.length;
+  if (card.hidden) return;
+  const basis = r.basis_months.length > 1
+    ? `${monthLabel(r.basis_months[0])} – ${monthLabel(r.basis_months[r.basis_months.length - 1])}`
+    : monthLabel(r.basis_months[0]);
+  const ratio = r.ratios;
+  const split = ratio.needs_percent == null ? "" : `
+    <div class="split" aria-label="Podział przychodów">
+      <div class="split-bar">
+        <i class="s-needs" style="width:${Math.max(0, Math.min(ratio.needs_percent, 100))}%"></i>
+        <i class="s-wants" style="width:${Math.max(0, Math.min(ratio.wants_percent, 100 - Math.min(ratio.needs_percent, 100)))}%"></i>
+      </div>
+      <div class="split-legend">
+        <span><i class="s-needs"></i>Potrzeby ${Math.round(ratio.needs_percent)}%</span>
+        <span><i class="s-wants"></i>Przyjemności ${Math.round(ratio.wants_percent)}%</span>
+        <span><i class="s-save"></i>Zostaje ${Math.round(ratio.savings_percent)}%</span>
+      </div>
+      <div class="muted">Zasada 50/30/20: potrzeby do 50%, przyjemności do 30%, oszczędności od 20%.</div>
+    </div>`;
+  const score = h.score == null ? "" : `
+    <div class="health-score">
+      <strong>${h.score}<small>/100</small></strong>
+      <span>${esc(h.label)}<br><small class="muted">na podstawie: ${esc(basis)}</small></span>
+    </div>
+    <ul class="health-parts">${h.components.map((c) => `
+      <li><div class="hp-head"><span>${esc(c.label)}</span><span>${c.points}/${c.max}</span></div>
+        <div class="budget-bar"><div style="width:${(100 * c.points) / c.max}%"></div></div>
+        <div class="muted">${esc(c.text)}</div></li>`).join("")}</ul>`;
+  const recs = r.recommendations.length ? `
+    <h3>Co zrobić</h3>
+    <ul class="insights-list">${r.recommendations.map((x) =>
+      `<li><span class="ins-ico">${svgIcon("bulb")}</span><div>${esc(x.text)}</div></li>`).join("")}</ul>` : "";
+  $("#health-body").innerHTML = `${score}${split}${recs}
+    <button type="button" class="btn btn-ghost" id="health-ask">${svgIcon("sparkle")} Omów z doradcą AI</button>`;
+  $("#health-ask").addEventListener("click", () => {
+    openAssistant();
+    if (aiStore.get(AI_KEY_STORAGE)) {
+      $("#ai-input").value = "Oceń kondycję moich finansów i powiedz, co poprawić w pierwszej kolejności.";
+      $("#ai-form").requestSubmit();
+    }
+  });
+}
+
 loaders.plan = async () => {
+  renderHealth().catch(() => {});
   const month = monthKey(new Date());
   $("#budget-month").textContent = monthLabel(month);
   fillDatalists().catch(() => {});

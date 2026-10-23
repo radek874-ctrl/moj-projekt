@@ -39,7 +39,7 @@ app = FastAPI(
         "Kwoty w złotych (maks. 2 miejsca po przecinku), daty w formacie `RRRR-MM-DD`, "
         "miesiące `RRRR-MM`. Kategorie są zapisywane małymi literami."
     ),
-    version="3.0.0",
+    version="3.2.0",
     lifespan=lifespan,
     openapi_tags=TAGS,
 )

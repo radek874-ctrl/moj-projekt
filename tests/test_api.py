@@ -495,3 +495,112 @@ def test_categories_rename_and_merge(client):
     assert client.get("/budgets").json() == [{"category": "jedzenie", "monthly_limit": 500.0}]
     assert client.get("/recurring").json()[0]["category"] == "jedzenie"
     assert client.post("/categories/rename", json={"kind": "expense", "from": "a", "to": "A"}).status_code == 422
+
+
+# ---------- doradca finansowy ----------
+
+def _months_back(n):
+    from app.advisor import month_shift
+    from datetime import date
+    return month_shift(date.today().strftime("%Y-%m"), -n)
+
+
+def _seed_months(client, months=3, income=5000, loan=1500, fun=400, food=900):
+    for k in range(months, 0, -1):
+        m = _months_back(k)
+        client.post("/incomes", json={"amount": income, "category": "wynagrodzenie", "date": f"{m}-10"})
+        add(client, loan, "kredyt", f"{m}-05", "Rata")
+        add(client, food, "jedzenie", f"{m}-12", "Biedronka")
+        add(client, fun, "rozrywka", f"{m}-20", "Kino")
+        add(client, 49, "rozrywka", f"{m}-03", "Netflix")
+
+
+def test_report_empty(client):
+    r = client.get("/analytics/report").json()
+    assert r["health"]["score"] is None
+    assert r["recommendations"][0]["key"] == "start"
+    assert client.get("/analytics/report", params={"month": "2026-13"}).status_code == 422
+
+
+def test_report_health_and_ratios(client):
+    _seed_months(client)
+    r = client.get("/analytics/report").json()
+    assert r["complete"] is False
+    assert r["basis_months"] == [_months_back(3), _months_back(2), _months_back(1)]
+    a = r["averages"]
+    assert a["income"] == 5000 and a["expenses"] == 2849 and a["debt_payments"] == 1500
+    assert a["needs"] == 2400 and a["wants"] == 449 and a["fixed"] == 1500
+    assert r["ratios"]["debt_to_income_percent"] == 30.0
+    assert r["ratios"]["savings_percent"] == 43.02
+    h = {c["key"]: c for c in r["health"]["components"]}
+    assert h["savings"]["points"] == 30 and h["emergency"]["points"] == 0
+    assert h["debt"]["points"] == 7 and h["fixed"]["points"] == 15 and h["budgets"]["points"] == 5
+    assert r["health"]["score"] == 57 and r["health"]["label"] == "przeciętna"
+    keys = [x["key"] for x in r["recommendations"]]
+    assert keys == ["emergency", "budgets"]
+    assert "brakuje 8\u00a0547\u00a0zł" in r["recommendations"][0]["text"]
+
+    # Oszczędności spoza aplikacji poprawiają poduszkę.
+    r2 = client.get("/analytics/report", params={"savings": 20000}).json()
+    assert r2["emergency_fund"]["months_covered"] == 7.0
+    assert r2["health"]["score"] == 82
+
+    # Zakończony miesiąc: okres bazowy kończy się na nim.
+    last = client.get("/analytics/report", params={"month": _months_back(1)}).json()
+    assert last["complete"] is True and last["basis_months"][-1] == _months_back(1)
+    assert last["totals"]["savings_rate"] == 43.02
+
+
+def test_report_spike_and_low_savings(client):
+    _seed_months(client, income=3000)
+    m = _months_back(0)
+    add(client, 600, "rozrywka", f"{m}-01", "Koncert")
+    r = client.get("/analytics/report").json()
+    cat = next(c for c in r["categories"] if c["category"] == "rozrywka")
+    assert cat["usual"] == 449 and cat["change_percent"] == 33.63 and cat["need"] is False
+    keys = [x["key"] for x in r["recommendations"]]
+    assert keys[0] == "savings" and "debt" in keys and "spike" in keys
+    assert "rozrywka" in r["recommendations"][0]["text"]
+
+
+def test_trends_compare(client):
+    _seed_months(client)
+    add(client, 100, "rozrywka", f"{_months_back(2)}-21")
+    add(client, 300, "rozrywka", f"{_months_back(1)}-21")
+    t = client.get("/analytics/trends", params={"months": 4}).json()
+    assert t["months"][-1] == _months_back(0)
+    fun = next(c for c in t["categories"] if c["category"] == "rozrywka")
+    assert fun["values"] == [449, 549, 749, 0] and fun["trend"] == "up" and fun["slope"] == 150
+    assert next(c for c in t["categories"] if c["category"] == "kredyt")["trend"] == "flat"
+    assert client.get("/analytics/trends", params={"months": 2}).status_code == 422
+
+    c = client.get("/analytics/compare", params={"a": _months_back(3), "b": _months_back(1)}).json()
+    assert c["diff"] == 300 and c["categories"][0] == {
+        "category": "rozrywka", "a": 449, "b": 749, "diff": 300, "change_percent": 66.82}
+
+
+def test_merchants_and_subscriptions(client):
+    _seed_months(client, months=4)
+    add(client, 12, "jedzenie", f"{_months_back(1)}-13", "  biedronka ")
+    m = client.get("/analytics/merchants", params={"limit": 2}).json()
+    assert m[0]["name"] == "Rata" and m[1]["name"] == "biedronka" and m[1]["count"] == 5
+    s = client.get("/analytics/subscriptions").json()
+    names = {i["name"]: i for i in s["items"]}
+    assert names["Netflix"]["fixed_amount"] is True and names["Netflix"]["yearly_cost"] == 588
+    assert names["Netflix"]["active"] is True and names["Netflix"]["registered"] is False
+    client.post("/recurring", json={"kind": "expense", "name": "netflix", "category": "rozrywka", "amount": 49, "day": 3})
+    s = client.get("/analytics/subscriptions").json()
+    assert next(i for i in s["items"] if i["name"] == "Netflix")["registered"] is True
+
+
+def test_patterns(client):
+    add(client, 100, "jedzenie", "2026-06-06")   # sobota
+    add(client, 30, "jedzenie", "2026-06-08")    # poniedziałek
+    add(client, 70, "rozrywka", "2026-06-25")
+    p = client.get("/analytics/patterns", params={"date_from": "2026-06-01", "date_to": "2026-06-30"}).json()
+    assert p["days"] == 30 and p["total"] == 200 and p["daily_average"] == 6.67
+    assert p["weekend_share_percent"] == 50.0
+    assert p["by_weekday"][0] == {"weekday": "poniedziałek", "total": 30, "count": 1, "share_percent": 15.0}
+    assert [x["total"] for x in p["by_part_of_month"]] == [130, 0, 70]
+    assert p["small_purchases"]["count"] == 1
+    assert client.get("/analytics/patterns", params={"date_from": "2026-07-01", "date_to": "2026-06-01"}).status_code == 422
